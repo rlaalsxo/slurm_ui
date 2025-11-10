@@ -156,7 +156,7 @@ class NodesFrame(ctk.CTkFrame):
         """새 팝업창에서 상세정보 표시"""
         popup = ctk.CTkToplevel(self)
         popup.title(f"🔍 Node Detail: {node_name}")
-        popup.geometry("800x600")
+        popup.geometry("900x700")
         popup.lift()
         popup.focus_force()
 
