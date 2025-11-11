@@ -81,3 +81,19 @@ def get_job_status(job_id):
     res = requests.get(f"{get_base_url()}/slurm/status/{job_id}", timeout=5)
     res.raise_for_status()
     return res.json()
+
+def get_job_stats(start=None, end=None):
+    """모델별 Job 통계 조회"""
+    if not start or not end:
+        now = datetime.datetime.now()
+        start = (now - datetime.timedelta(days=30)).isoformat()
+        end = now.isoformat()
+
+    res = requests.get(
+        f"{get_base_url()}/slurm/job-stats",
+        params={"start": start, "end": end},
+        timeout=15,
+    )
+    res.raise_for_status()
+    return res.json()
+

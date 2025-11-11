@@ -1,3 +1,4 @@
+# ui/jobs_history.py
 import customtkinter as ctk
 from services.api_client import get_jobs
 import datetime
@@ -35,7 +36,7 @@ class JobsHistoryFrame(ctk.CTkFrame):
         self.fetch_button = ctk.CTkButton(control_frame, text="🔍 조회하기", width=100, command=self.fetch_history)
         self.fetch_button.grid(row=0, column=7, padx=10, pady=5)
 
-        # 결과 표시 텍스트박스 (📌 고정폭 폰트 적용)
+        # 결과 표시 텍스트박스 (📘 고정폭 폰트 적용)
         self.textbox = ctk.CTkTextbox(
             self,
             height=550,
@@ -85,11 +86,11 @@ class JobsHistoryFrame(ctk.CTkFrame):
             # 결과 정리
             self.textbox.delete("1.0", "end")
             header = (
-                f"{'JobID':10} {'Name':22} {'User':12} {'Account':12} "
-                f"{'State':12} {'Start':20} {'End':20}\n"
+                f"{'JobID':10} {'Name':20} {'User':10} {'Account':10} "
+                f"{'State':10} {'Start':19} {'End':19} {'Node':12}\n"
             )
             self.textbox.insert("end", header, "default")
-            self.textbox.insert("end", "-" * 115 + "\n", "default")
+            self.textbox.insert("end", "-" * 125 + "\n", "default")
 
             jobs.sort(key=lambda j: j.get("end") or "", reverse=True)
 
@@ -97,12 +98,13 @@ class JobsHistoryFrame(ctk.CTkFrame):
                 tag = self._get_state_tag(job.get("state", ""))
                 line = (
                     f"{job.get('job_id', '-')[:10]:10} "
-                    f"{job.get('job_name', '-')[:22]:22} "
-                    f"{job.get('user', '-')[:12]:12} "
-                    f"{job.get('account', '-')[:12]:12} "
-                    f"{job.get('state', '-')[:12]:12} "
-                    f"{job.get('start', '-')[:20]:20} "
-                    f"{job.get('end', '-')[:20]:20}\n"
+                    f"{job.get('job_name', '-')[:20]:20} "
+                    f"{job.get('user', '-')[:10]:10} "
+                    f"{job.get('account', '-')[:10]:10} "
+                    f"{job.get('state', '-')[:10]:10} "
+                    f"{job.get('start', '-')[:19]:19} "
+                    f"{job.get('end', '-')[:19]:19} "
+                    f"{job.get('node_list', '-')[:12]:12}\n"
                 )
                 self.textbox.insert("end", line, tag)
 

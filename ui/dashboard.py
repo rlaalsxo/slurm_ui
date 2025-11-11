@@ -1,8 +1,8 @@
-# ui/dashboard.py
 import customtkinter as ctk
 from ui.nodes import NodesFrame
 from ui.jobs_live import JobsLiveFrame
 from ui.jobs_history import JobsHistoryFrame
+from ui.model_stats import ModelStatsFrame   # ✅ 새로 추가
 from services import api_client
 
 
@@ -11,7 +11,7 @@ class Dashboard(ctk.CTkFrame):
         super().__init__(master)
 
         # ======================
-        # 상단 Environment 전환 바
+        # 🌐 Environment 전환 바
         # ======================
         env_frame = ctk.CTkFrame(self)
         env_frame.pack(fill="x", padx=20, pady=(15, 5))
@@ -63,15 +63,18 @@ class Dashboard(ctk.CTkFrame):
         self.current_env_label.pack(side="right", padx=10)
 
         # ======================
-        # 탭 구성
+        # 🧭 탭 구성
         # ======================
         self.tabview = ctk.CTkTabview(self)
         self.tabview.pack(fill="both", expand=True, padx=20, pady=20)
 
+        # --- 개별 탭 생성 ---
         self.nodes_tab = self.tabview.add("🖥️ Nodes")
         self.jobs_tab = self.tabview.add("🔄 Running Jobs")
         self.history_tab = self.tabview.add("📜 Job History")
+        self.stats_tab = self.tabview.add("📊 Model Stats")  # ✅ 추가된 탭
 
+        # --- 각 탭에 프레임 장착 ---
         self.nodes_frame = NodesFrame(self.nodes_tab)
         self.nodes_frame.pack(fill="both", expand=True)
 
@@ -81,8 +84,11 @@ class Dashboard(ctk.CTkFrame):
         self.history_frame = JobsHistoryFrame(self.history_tab)
         self.history_frame.pack(fill="both", expand=True)
 
+        self.stats_frame = ModelStatsFrame(self.stats_tab)  # ✅ 새 탭 프레임 추가
+        self.stats_frame.pack(fill="both", expand=True)
+
     # ======================
-    # 환경 전환 로직
+    # 🌐 환경 전환 로직
     # ======================
     def change_env(self):
         env = self.env_var.get().upper()
@@ -95,28 +101,28 @@ class Dashboard(ctk.CTkFrame):
         self.refresh_all()  # 전환 시 자동 새로고침
 
     # ======================
-    # 전체 새로고침 기능
+    # 🔄 전체 새로고침
     # ======================
     def refresh_all(self):
         """모든 탭 데이터 새로고침"""
         try:
             print("🔁 전체 새로고침 중...")
 
-            # 노드 목록 새로고침
+            # 노드 탭 새로고침
             if hasattr(self.nodes_frame, "refresh"):
                 self.nodes_frame.refresh()
 
-            # 잡 상태 새로고침
+            # 실시간 잡 새로고침
             if hasattr(self.jobs_frame, "refresh"):
                 self.jobs_frame.refresh()
 
-            # 히스토리 탭 초기화 안내문
-            if hasattr(self.history_frame, "textbox"):
-                self.history_frame.textbox.delete("1.0", "end")
-                self.history_frame.textbox.insert(
-                    "end",
-                    f"⚙️ '{self.env_var.get()}' 환경 기준으로 데이터가 초기화되었습니다.\n조회 기간을 다시 설정해주세요.\n"
-                )
+            # 잡 히스토리 초기화
+            if hasattr(self.history_frame, "refresh"):
+                self.history_frame.refresh()
+
+            # 모델 통계 초기화
+            if hasattr(self.stats_frame, "refresh"):
+                self.stats_frame.refresh()
 
             print("✅ 전체 새로고침 완료")
 

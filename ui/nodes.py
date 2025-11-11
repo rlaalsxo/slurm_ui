@@ -102,9 +102,8 @@ class NodesFrame(ctk.CTkFrame):
             self.after(60000, self.refresh)
 
     def display_nodes(self, nodes):
-        """📊 표시 정렬 및 폭 조정"""
+        """📊 노드 목록 표시 (간격 + 정렬 개선)"""
         self.table.delete("1.0", "end")
-        # 폭을 살짝 넉넉하게 조정
         self.table.insert("end", f"{'Node':22} {'State':15} {'CPU':14} {'Mem':12} {'GPU':18}\n", "default")
         self.table.insert("end", "-" * 90 + "\n", "default")
 
@@ -115,7 +114,7 @@ class NodesFrame(ctk.CTkFrame):
                 f"{n.get('state', '-')[:15]:15} "
                 f"{n.get('cpu', n.get('cpus', '-'))[:14]:14} "
                 f"{n.get('mem', n.get('memory', '-'))[:12]:12} "
-                f"{n.get('gpu', n.get('gpus', '-'))[:18]:18}\n"
+                f"{n.get('gpu', n.get('gpus', '-'))[:18]:18}\n\n"  # 👈 간격 확보
             )
             self.table.insert("end", line, tag)
 
@@ -144,30 +143,59 @@ class NodesFrame(ctk.CTkFrame):
         return "default"
 
     def on_click(self, event):
-        """노드 클릭 시 상세정보 팝업"""
+        """노드 클릭 시 하이라이트 + 팝업"""
         index = self.table.index(f"@{event.x},{event.y}")
         line = self.table.get(f"{index} linestart", f"{index} lineend").strip()
         if not line or line.startswith("Node") or line.startswith("-"):
             return
+
+        # 클릭 시 줄 하이라이트 효과
+        self.table.tag_add("highlight", f"{index} linestart", f"{index} lineend")
+        self.table.tag_config("highlight", background="#333333")
+        self.after(250, lambda: self.table.tag_remove("highlight", "1.0", "end"))
+
         node_name = line.split()[0]
         threading.Thread(target=self.open_node_detail_popup, args=(node_name,), daemon=True).start()
 
     def open_node_detail_popup(self, node_name):
-        """새 팝업창에서 상세정보 표시"""
+        """새 팝업창에서 상세정보 표시 (가독성 및 상태 하이라이트 포함)"""
         popup = ctk.CTkToplevel(self)
         popup.title(f"🔍 Node Detail: {node_name}")
         popup.geometry("900x700")
+
+        # ✅ 항상 맨 위에 표시 (exe 뒤로 안 감)
+        popup.transient(self.winfo_toplevel())
+        popup.attributes("-topmost", True)
         popup.lift()
         popup.focus_force()
 
-        label = ctk.CTkLabel(popup, text=f"Loading node info for {node_name}...", font=ctk.CTkFont(size=14))
+        # 제목 라벨
+        label = ctk.CTkLabel(
+            popup,
+            text=f"Loading node info for {node_name}...",
+            font=ctk.CTkFont(size=15, weight="bold")
+        )
         label.pack(pady=10)
 
-        textbox = ctk.CTkTextbox(popup, width=780, height=500, font=ctk.CTkFont(family="Consolas", size=12))
-        textbox.pack(padx=10, pady=10, fill="both", expand=True)
+        # 텍스트 영역 (📘 고정폭 폰트 + 색상 태그)
+        textbox = ctk.CTkTextbox(
+            popup,
+            width=850,
+            height=520,
+            font=ctk.CTkFont(family="Consolas", size=13)
+        )
+        textbox.pack(padx=15, pady=10, fill="both", expand=True)
 
-        close_btn = ctk.CTkButton(popup, text="닫기", command=popup.destroy)
-        close_btn.pack(pady=10)
+        # 색상 태그 정의
+        textbox.tag_config("key", foreground="#00ccff")        # 파랑: 주요 필드명
+        textbox.tag_config("ok", foreground="#00ff66")         # 초록: 정상 상태
+        textbox.tag_config("warn", foreground="#ffcc00")       # 노랑: 주의
+        textbox.tag_config("error", foreground="#ff5555")      # 빨강: 문제 상태
+        textbox.tag_config("default", foreground="#cccccc")
+
+        # 닫기 버튼
+        close_btn = ctk.CTkButton(popup, text="닫기", width=100, command=popup.destroy)
+        close_btn.pack(pady=(0, 15))
 
         try:
             from services import api_client
@@ -176,14 +204,40 @@ class NodesFrame(ctk.CTkFrame):
             data = res.json()
 
             textbox.delete("1.0", "end")
+
             if isinstance(data, dict):
+                max_key_len = max(len(k) for k in data.keys())
                 for k, v in data.items():
-                    textbox.insert("end", f"{k}: {v}\n")
+                    key_tag = "key"
+                    value_tag = "default"
+
+                    # 🔍 상태 기반 색상 강조
+                    if k.lower() in ("state", "reason"):
+                        s = str(v).upper()
+                        if "DOWN" in s or "FAIL" in s:
+                            value_tag = "error"
+                        elif "DRAIN" in s or "RESERVED" in s:
+                            value_tag = "warn"
+                        elif "IDLE" in s or "ALLOC" in s:
+                            value_tag = "ok"
+                    elif any(x in k.lower() for x in ("cpu", "mem", "gpu", "gres")):
+                        key_tag = "key"
+                        if str(v).isdigit() or "G" in str(v).upper():
+                            value_tag = "ok"
+                    elif "error" in str(v).lower():
+                        value_tag = "error"
+
+                    # 예쁘게 정렬해서 출력
+                    textbox.insert("end", f"{k:<{max_key_len}} : ", key_tag)
+                    textbox.insert("end", f"{v}\n", value_tag)
+
             else:
-                textbox.insert("end", str(data))
+                textbox.insert("end", str(data), "default")
 
             label.configure(text=f"Node Detail: {node_name}")
 
         except Exception as e:
             textbox.delete("1.0", "end")
-            textbox.insert("end", f"❌ Error fetching node detail: {e}")
+            textbox.insert("end", f"❌ Error fetching node detail: {e}", "error")
+
+
