@@ -79,8 +79,8 @@ class JobsLiveFrame(ctk.CTkFrame):
             self.textbox.insert("end", f"\n❌ Error fetching queue: {e}\n", "error")
 
         finally:
-            # 15초마다 자동 갱신
-            self.after(15000, self.refresh)
+            # 60초마다 자동 갱신
+            self.after(60000, self.refresh)
 
     def _get_state_tag(self, state: str) -> str:
         """잡 상태별 색상 태그"""

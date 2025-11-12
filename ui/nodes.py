@@ -99,7 +99,7 @@ class NodesFrame(ctk.CTkFrame):
             self.table.delete("1.0", "end")
             self.table.insert("end", f"❌ Error fetching nodes: {e}\n", "down")
         finally:
-            self.after(60000, self.refresh)
+            self.after(600000, self.refresh)
 
     def display_nodes(self, nodes):
         """📊 노드 목록 표시 (간격 + 정렬 개선)"""
