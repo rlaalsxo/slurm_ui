@@ -11,14 +11,14 @@ class JobsLiveFrame(ctk.CTkFrame):
 
         self.title_label = ctk.CTkLabel(
             top_frame,
-            text="🌀 Slurm Queue (실시간 잡 모니터)",
+            text="Slurm Queue (Live Job Monitor)",
             font=ctk.CTkFont(size=16, weight="bold")
         )
         self.title_label.pack(side="left", padx=5)
 
         self.refresh_button = ctk.CTkButton(
             top_frame,
-            text="🔄 즉시 새로고침",
+            text="Refresh Now",
             width=150,
             command=self.refresh
         )
@@ -76,7 +76,7 @@ class JobsLiveFrame(ctk.CTkFrame):
 
         except Exception as e:
             self.textbox.delete("1.0", "end")
-            self.textbox.insert("end", f"\n❌ Error fetching queue: {e}\n", "error")
+            self.textbox.insert("end", f"\n Error fetching queue: {e}\n", "error")
 
         finally:
             # 60초마다 자동 갱신

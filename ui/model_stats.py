@@ -16,26 +16,26 @@ class ModelStatsFrame(ctk.CTkFrame):
         control_frame = ctk.CTkFrame(self)
         control_frame.pack(fill="x", padx=10, pady=(10, 5))
 
-        self.start_label = ctk.CTkLabel(control_frame, text="📅 Start (YYYY-MM-DD):")
+        self.start_label = ctk.CTkLabel(control_frame, text="Start (YYYY-MM-DD):")
         self.start_label.grid(row=0, column=0, padx=5, pady=5)
         self.start_entry = ctk.CTkEntry(control_frame, width=120)
         self.start_entry.grid(row=0, column=1, padx=5, pady=5)
 
-        self.end_label = ctk.CTkLabel(control_frame, text="📅 End (YYYY-MM-DD):")
+        self.end_label = ctk.CTkLabel(control_frame, text="End (YYYY-MM-DD):")
         self.end_label.grid(row=0, column=2, padx=5, pady=5)
         self.end_entry = ctk.CTkEntry(control_frame, width=120)
         self.end_entry.grid(row=0, column=3, padx=5, pady=5)
 
         # 빠른 선택 버튼
-        self.last7_btn = ctk.CTkButton(control_frame, text="최근 7일", width=80, command=lambda: self.set_range(7))
+        self.last7_btn = ctk.CTkButton(control_frame, text="Last 7 days", width=80, command=lambda: self.set_range(7))
         self.last7_btn.grid(row=0, column=4, padx=5)
-        self.last30_btn = ctk.CTkButton(control_frame, text="최근 30일", width=80, command=lambda: self.set_range(30))
+        self.last30_btn = ctk.CTkButton(control_frame, text="Last 30 days", width=80, command=lambda: self.set_range(30))
         self.last30_btn.grid(row=0, column=5, padx=5)
-        self.all_btn = ctk.CTkButton(control_frame, text="전체", width=80, command=self.set_all)
+        self.all_btn = ctk.CTkButton(control_frame, text="All", width=80, command=self.set_all)
         self.all_btn.grid(row=0, column=6, padx=5)
 
         # 조회 버튼
-        self.fetch_btn = ctk.CTkButton(control_frame, text="🔍 통계 조회", width=110, command=self.fetch_stats)
+        self.fetch_btn = ctk.CTkButton(control_frame, text="Fetch Stats", width=110, command=self.fetch_stats)
         self.fetch_btn.grid(row=0, column=7, padx=5)
 
         # ------------------------
@@ -44,14 +44,14 @@ class ModelStatsFrame(ctk.CTkFrame):
         sort_frame = ctk.CTkFrame(self)
         sort_frame.pack(fill="x", padx=10, pady=(0, 5))
 
-        ctk.CTkLabel(sort_frame, text="📑 정렬 기준:", font=ctk.CTkFont(weight="bold")).pack(side="left", padx=(10, 5))
+        ctk.CTkLabel(sort_frame, text="Sort by:", font=ctk.CTkFont(weight="bold")).pack(side="left", padx=(10, 5))
         self.sort_buttons = {}
         for key, text in [
-            ("total", "총 실행 수"),
-            ("avg_time", "평균시간"),
-            ("completed", "완료 수"),
-            ("failed", "실패 수"),
-            ("cancelled", "취소 수"),
+            ("total", "Total Runs"),
+            ("avg_time", "Average Time"),
+            ("completed", "Completed"),
+            ("failed", "Failed"),
+            ("cancelled", "Cancelled"),
         ]:
             btn = ctk.CTkButton(sort_frame, text=text, width=100, command=lambda k=key: self.sort_by(k))
             btn.pack(side="left", padx=3)
@@ -102,11 +102,11 @@ class ModelStatsFrame(ctk.CTkFrame):
     def _fetch_stats_thread(self):
         try:
             self.textbox.delete("1.0", "end")
-            self.textbox.insert("end", "📊 모델 통계 데이터를 불러오는 중...\n", "default")
+            self.textbox.insert("end", "Loading model statistics...\n", "default")
 
             start_str, end_str = self.start_entry.get().strip(), self.end_entry.get().strip()
             if not start_str or not end_str:
-                self.textbox.insert("end", "\n⚠️ 시작일과 종료일을 모두 입력하세요.\n", "warn")
+                self.textbox.insert("end", "\n⚠️ Please enter both start and end dates.\n", "warn")
                 return
 
             start_iso = datetime.datetime.strptime(start_str, "%Y-%m-%d").isoformat()
@@ -126,7 +126,7 @@ class ModelStatsFrame(ctk.CTkFrame):
     def display_stats(self):
         if not self.cached_stats:
             self.textbox.delete("1.0", "end")
-            self.textbox.insert("end", "📭 데이터가 없습니다.\n", "default")
+            self.textbox.insert("end", "No data available.\n", "default")
             return
 
         key = self.current_sort_key
@@ -185,11 +185,11 @@ class ModelStatsFrame(ctk.CTkFrame):
         """현재 정렬 상태를 ▲▼ 아이콘으로 표시"""
         for key, btn in self.sort_buttons.items():
             text = {
-                "total": "총 실행 수",
-                "avg_time": "평균시간",
-                "completed": "완료 수",
-                "failed": "실패 수",
-                "cancelled": "취소 수"
+                "total": "Total Runs",
+                "avg_time": "Average Time",
+                "completed": "Completed",
+                "failed": "Failed",
+                "cancelled": "Cancelled"
             }[key]
 
             if key == self.current_sort_key:
@@ -206,8 +206,8 @@ class ModelStatsFrame(ctk.CTkFrame):
         self.textbox.delete("1.0", "end")
         self.textbox.insert(
             "end",
-            "⚙️ Model Stats 탭이 초기화되었습니다.\n"
-            "조회 기간을 다시 설정 후 [🔍 통계 조회] 버튼을 눌러주세요.\n",
+            "Model Stats tab has been reset.\n"
+            "Please set a date range and click [Fetch Stats].\n",
             "default"
         )
         self.cached_stats = []

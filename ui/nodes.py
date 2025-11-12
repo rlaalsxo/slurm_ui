@@ -16,12 +16,12 @@ class NodesFrame(ctk.CTkFrame):
 
         self.title_label = ctk.CTkLabel(
             top_frame,
-            text="🖥️ Slurm Nodes (노드 상태 모니터)",
+            text="Slurm Nodes (Node Status Monitor)",
             font=ctk.CTkFont(size=16, weight="bold")
         )
         self.title_label.pack(side="left", padx=5)
 
-        self.refresh_button = ctk.CTkButton(top_frame, text="🔄 새로고침", width=120, command=self.refresh)
+        self.refresh_button = ctk.CTkButton(top_frame, text="Refresh", width=120, command=self.refresh)
         self.refresh_button.pack(side="right", padx=5)
 
         # 상태 요약
@@ -160,7 +160,7 @@ class NodesFrame(ctk.CTkFrame):
     def open_node_detail_popup(self, node_name):
         """새 팝업창에서 상세정보 표시 (가독성 및 상태 하이라이트 포함)"""
         popup = ctk.CTkToplevel(self)
-        popup.title(f"🔍 Node Detail: {node_name}")
+        popup.title(f"Node Detail: {node_name}")
         popup.geometry("900x700")
 
         # ✅ 항상 맨 위에 표시 (exe 뒤로 안 감)
@@ -194,7 +194,7 @@ class NodesFrame(ctk.CTkFrame):
         textbox.tag_config("default", foreground="#cccccc")
 
         # 닫기 버튼
-        close_btn = ctk.CTkButton(popup, text="닫기", width=100, command=popup.destroy)
+        close_btn = ctk.CTkButton(popup, text="Close", width=100, command=popup.destroy)
         close_btn.pack(pady=(0, 15))
 
         try:

@@ -13,27 +13,27 @@ class JobsHistoryFrame(ctk.CTkFrame):
         control_frame.pack(fill="x", padx=10, pady=(10, 5))
 
         # 시작 날짜 입력
-        self.start_label = ctk.CTkLabel(control_frame, text="📅 Start (YYYY-MM-DD):")
+        self.start_label = ctk.CTkLabel(control_frame, text="Start (YYYY-MM-DD):")
         self.start_label.grid(row=0, column=0, padx=5, pady=5)
         self.start_entry = ctk.CTkEntry(control_frame, width=120)
         self.start_entry.grid(row=0, column=1, padx=5, pady=5)
 
         # 종료 날짜 입력
-        self.end_label = ctk.CTkLabel(control_frame, text="📅 End (YYYY-MM-DD):")
+        self.end_label = ctk.CTkLabel(control_frame, text="End (YYYY-MM-DD):")
         self.end_label.grid(row=0, column=2, padx=5, pady=5)
         self.end_entry = ctk.CTkEntry(control_frame, width=120)
         self.end_entry.grid(row=0, column=3, padx=5, pady=5)
 
         # 빠른 선택 버튼들
-        self.last7_button = ctk.CTkButton(control_frame, text="최근 7일", width=80, command=lambda: self.set_range(7))
+        self.last7_button = ctk.CTkButton(control_frame, text="Last 7 days", width=80, command=lambda: self.set_range(7))
         self.last7_button.grid(row=0, column=4, padx=5)
-        self.last30_button = ctk.CTkButton(control_frame, text="최근 30일", width=80, command=lambda: self.set_range(30))
+        self.last30_button = ctk.CTkButton(control_frame, text="Last 30 days", width=80, command=lambda: self.set_range(30))
         self.last30_button.grid(row=0, column=5, padx=5)
-        self.all_button = ctk.CTkButton(control_frame, text="전체", width=80, command=lambda: self.set_range(365))
+        self.all_button = ctk.CTkButton(control_frame, text="All", width=80, command=lambda: self.set_range(365))
         self.all_button.grid(row=0, column=6, padx=5)
 
         # 조회 버튼
-        self.fetch_button = ctk.CTkButton(control_frame, text="🔍 조회하기", width=100, command=self.fetch_history)
+        self.fetch_button = ctk.CTkButton(control_frame, text="Fetch", width=100, command=self.fetch_history)
         self.fetch_button.grid(row=0, column=7, padx=10, pady=5)
 
         # 결과 표시 텍스트박스 (📘 고정폭 폰트 적용)
@@ -67,14 +67,14 @@ class JobsHistoryFrame(ctk.CTkFrame):
     def _fetch_history_thread(self):
         try:
             self.textbox.delete("1.0", "end")
-            self.textbox.insert("end", "⏳ 데이터를 불러오는 중...\n", "default")
+            self.textbox.insert("end", "Loading job history data...\n", "default")
 
             start_str = self.start_entry.get().strip()
             end_str = self.end_entry.get().strip()
 
             if not start_str or not end_str:
                 self.textbox.delete("1.0", "end")
-                self.textbox.insert("end", "⚠️ 시작일과 종료일을 모두 입력하세요 (예: 2025-11-01)\n", "failed")
+                self.textbox.insert("end", "Please enter both start and end dates (e.g., 2025-11-01)\n", "failed")
                 return
 
             # ISO 포맷 변환
@@ -109,11 +109,11 @@ class JobsHistoryFrame(ctk.CTkFrame):
                 self.textbox.insert("end", line, tag)
 
             if not jobs:
-                self.textbox.insert("end", "\n📭 조회된 Job이 없습니다.\n", "default")
+                self.textbox.insert("end", "\nNo jobs found for the selected period.\n", "default")
 
         except Exception as e:
             self.textbox.delete("1.0", "end")
-            self.textbox.insert("end", f"❌ Error fetching job history: {e}\n", "failed")
+            self.textbox.insert("end", f"Error fetching job history: {e}\n", "failed")
 
     def _get_state_tag(self, state: str):
         s = state.upper()
@@ -132,7 +132,7 @@ class JobsHistoryFrame(ctk.CTkFrame):
         self.textbox.delete("1.0", "end")
         self.textbox.insert(
             "end",
-            "⚙️ Job History 탭은 새로고침 시 데이터가 초기화됩니다.\n"
-            "조회할 기간을 다시 입력 후 [🔍 조회하기] 버튼을 눌러주세요.\n",
+            "Job History tab has been reset.\n"
+            "Please set a new date range and click [Fetch].\n",
             "default"
         )
