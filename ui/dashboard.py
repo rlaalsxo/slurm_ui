@@ -21,10 +21,6 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 # Global fonts
-DEFAULT_FONT = ctk.CTkFont(family=DEFAULT_FONT_FAMILY, size=13)
-HEADER_FONT = ctk.CTkFont(family=DEFAULT_FONT_FAMILY, size=14, weight="bold")
-TITLE_FONT = ctk.CTkFont(family=DEFAULT_FONT_FAMILY, size=16, weight="bold")
-
 
 # ==========================================
 # 🧭 Dashboard Main Frame
@@ -32,6 +28,9 @@ TITLE_FONT = ctk.CTkFont(family=DEFAULT_FONT_FAMILY, size=16, weight="bold")
 class Dashboard(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
+        DEFAULT_FONT = ctk.CTkFont(family=DEFAULT_FONT_FAMILY, size=13)
+        HEADER_FONT = ctk.CTkFont(family=DEFAULT_FONT_FAMILY, size=14, weight="bold")
+        TITLE_FONT = ctk.CTkFont(family=DEFAULT_FONT_FAMILY, size=16, weight="bold")
 
         # ======================
         # 🌐 Environment Switch Bar
