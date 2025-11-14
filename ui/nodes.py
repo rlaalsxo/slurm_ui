@@ -278,7 +278,9 @@ class NodesFrame(ctk.CTkFrame):
 
         # 데이터 로드는 백그라운드에서
         threading.Thread(target=load_and_update, daemon=True).start()
-
+        
+    def refresh(self):
+        self.on_manual_refresh()
     # 종료 시 타이머 정리
     def destroy(self):
         self.stop_auto_refresh()

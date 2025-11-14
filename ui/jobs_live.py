@@ -131,6 +131,9 @@ class JobsLiveFrame(ctk.CTkFrame):
         elif s in ("CA", "CD", "F", "FAILED", "CANCELLED", "TIMEOUT"):
             return "error"
         return "default"
+    
+    def refresh(self):
+        self.on_manual_refresh()
 
     # 종료 시 타이머 정리
     def destroy(self):
