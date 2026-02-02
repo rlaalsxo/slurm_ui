@@ -5,6 +5,7 @@ from ui.nodes import NodesFrame
 from ui.jobs_live import JobsLiveFrame
 from ui.jobs_history import JobsHistoryFrame
 from ui.model_stats import ModelStatsFrame
+from ui.account_stats import AccountStatsFrame
 from services import api_client
 
 
@@ -99,6 +100,7 @@ class Dashboard(ctk.CTkFrame):
         self.jobs_tab = self.tabview.add("Running Jobs")
         self.history_tab = self.tabview.add("Job History")
         self.stats_tab = self.tabview.add("Model Stats")
+        self.account_tab = self.tabview.add("Account Stats")
 
         # --- Frames for each tab ---
         self.nodes_frame = NodesFrame(self.nodes_tab)
@@ -112,6 +114,9 @@ class Dashboard(ctk.CTkFrame):
 
         self.stats_frame = ModelStatsFrame(self.stats_tab)
         self.stats_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        self.account_frame = AccountStatsFrame(self.account_tab)
+        self.account_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
     # ======================
     # 🌐 Environment Switch Logic
@@ -149,6 +154,10 @@ class Dashboard(ctk.CTkFrame):
             # Model Stats
             if hasattr(self.stats_frame, "refresh"):
                 self.stats_frame.refresh()
+
+            # Account Stats
+            if hasattr(self.account_frame, "refresh"):
+                self.account_frame.refresh()
 
             print("All tabs refreshed successfully")
 
