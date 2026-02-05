@@ -27,6 +27,10 @@ load_dotenv(ENV_PATH)
 URL_MAIN = os.getenv("SLURM_CONTROLLER_URL_MAIN", "http://127.0.0.1:8000")
 URL_TEST = os.getenv("SLURM_CONTROLLER_URL_TEST", "http://127.0.0.1:8001")
 
+# Curieus 서버 URL (로그 조회용)
+SERVER_URL_MAIN = os.getenv("SERVER_URL_MAIN", "")
+SERVER_URL_TEST = os.getenv("SERVER_URL_TEST", "")
+
 _current_env = "MAIN"  # 기본값: MAIN
 
 
@@ -45,6 +49,11 @@ def set_env(env: str):
 def get_base_url():
     """현재 환경에 따른 BASE_URL 반환"""
     return URL_TEST if _current_env == "TEST" else URL_MAIN
+
+
+def get_server_url():
+    """현재 환경에 따른 Curieus 서버 URL 반환 (로그 조회용)"""
+    return SERVER_URL_TEST if _current_env == "TEST" else SERVER_URL_MAIN
 
 
 # ==========================
@@ -96,4 +105,14 @@ def get_job_stats(start=None, end=None):
     )
     res.raise_for_status()
     return res.json()
+
+
+def get_job_log(job_id):
+    """SLURM Job 로그 조회 (Curieus 서버 경유)"""
+    url = get_server_url()
+    if not url:
+        raise ValueError("SERVER_URL not configured in .env")
+    res = requests.get(f"{url}/slurm/logs/{job_id}", timeout=30)
+    res.raise_for_status()
+    return res.text
 

@@ -1,6 +1,6 @@
 # ui/jobs_history.py
 import customtkinter as ctk
-from services.api_client import get_jobs
+from services.api_client import get_jobs, get_job_log
 import datetime
 import threading
 
@@ -50,6 +50,13 @@ class JobsHistoryFrame(ctk.CTkFrame):
         self.textbox.tag_config("cancelled", foreground="#ffcc00")  # 노랑
         self.textbox.tag_config("default", foreground="#cccccc")    # 회색
 
+        # job 데이터 캐싱 (더블클릭 시 사용)
+        self._jobs_cache = []
+        self._job_line_map = {}  # line_number -> job dict
+
+        # 더블클릭 이벤트 바인딩
+        self.textbox.bind("<Double-Button-1>", self._on_double_click)
+
     # 날짜 범위 빠른 선택
     def set_range(self, days):
         end = datetime.date.today()
@@ -85,16 +92,24 @@ class JobsHistoryFrame(ctk.CTkFrame):
 
             # 결과 정리
             self.textbox.delete("1.0", "end")
+            self._jobs_cache = jobs
+            self._job_line_map = {}
+
             header = (
                 f"{'JobID':10} {'Name':20} {'User':10} {'Account':10} "
                 f"{'State':10} {'Start':19} {'End':19} {'Node':12}\n"
             )
             self.textbox.insert("end", header, "default")
             self.textbox.insert("end", "-" * 125 + "\n", "default")
+            self.textbox.insert("end", "  (Double-click a COMPLETED/FAILED job to view log)\n\n", "default")
 
             jobs.sort(key=lambda j: j.get("end") or "", reverse=True)
 
             for job in jobs:
+                # 현재 줄 번호 기록
+                line_idx = int(self.textbox.index("end-1c").split(".")[0])
+                self._job_line_map[line_idx] = job
+
                 tag = self._get_state_tag(job.get("state", ""))
                 line = (
                     f"{job.get('job_id', '-')[:10]:10} "
@@ -121,15 +136,74 @@ class JobsHistoryFrame(ctk.CTkFrame):
             return "completed"
         elif s in ("FAILED", "F"):
             return "failed"
-        elif s in ("CANCELLED", "CA"):
+        elif s.startswith("CANCELLED") or s == "CA":
             return "cancelled"
         else:
             return "default"
+
+    # ✅ 더블클릭 → 로그 조회
+    def _on_double_click(self, event):
+        index = self.textbox.index(f"@{event.x},{event.y}")
+        line_num = int(index.split(".")[0])
+        job = self._job_line_map.get(line_num)
+        if not job:
+            return
+
+        state = (job.get("state", "") or "").upper()
+        job_id = job.get("job_id", "")
+
+        # COMPLETED, FAILED만 로그 조회 가능
+        if state in ("COMPLETED", "CD", "FAILED", "F"):
+            self._show_log_popup(job_id)
+        else:
+            self._show_message_popup(
+                "Log Not Available",
+                f"Job {job_id} ({state}) does not have a log.\n\n"
+                "Only COMPLETED or FAILED jobs have logs."
+            )
+
+    def _show_message_popup(self, title, message):
+        popup = ctk.CTkToplevel(self)
+        popup.title(title)
+        popup.geometry("400x150")
+        popup.attributes("-topmost", True)
+
+        label = ctk.CTkLabel(popup, text=message, font=ctk.CTkFont(size=13))
+        label.pack(expand=True, padx=20, pady=20)
+
+        btn = ctk.CTkButton(popup, text="OK", width=100, command=popup.destroy)
+        btn.pack(pady=(0, 15))
+
+    def _show_log_popup(self, job_id):
+        popup = ctk.CTkToplevel(self)
+        popup.title(f"Job Log: {job_id}")
+        popup.geometry("900x600")
+        popup.attributes("-topmost", True)
+
+        textbox = ctk.CTkTextbox(popup, font=ctk.CTkFont(family="Consolas", size=12))
+        textbox.pack(fill="both", expand=True, padx=10, pady=10)
+        textbox.insert("end", f"Loading log for job {job_id}...")
+
+        def fetch_log():
+            try:
+                log_content = get_job_log(job_id)
+                textbox.after(0, lambda: self._update_log_textbox(textbox, log_content))
+            except Exception as e:
+                error_msg = f"Error fetching log: {e}"
+                textbox.after(0, lambda: self._update_log_textbox(textbox, error_msg))
+
+        threading.Thread(target=fetch_log, daemon=True).start()
+
+    def _update_log_textbox(self, textbox, content):
+        textbox.delete("1.0", "end")
+        textbox.insert("end", content)
 
     # ✅ 새로고침 기능 추가
     def refresh(self):
         """대시보드에서 전체 새로고침 시 불리는 함수"""
         self.textbox.delete("1.0", "end")
+        self._jobs_cache = []
+        self._job_line_map = {}
         self.textbox.insert(
             "end",
             "Job History tab has been reset.\n"

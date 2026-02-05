@@ -1,0 +1,1 @@
+pyinstaller --noconfirm --onefile --windowed --name "SlurmUI" --icon "curie.ico" --add-data "services/.env;." --add-data "curie.ico;." --hidden-import "backports" --hidden-import "backports.tarfile" main.py

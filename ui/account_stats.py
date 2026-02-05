@@ -178,7 +178,7 @@ class AccountStatsFrame(ctk.CTkFrame):
                 a["completed"] += 1
             elif state in ("FAILED", "F"):
                 a["failed"] += 1
-            elif state in ("CANCELLED", "CA"):
+            elif state.startswith("CANCELLED") or state == "CA":
                 a["cancelled"] += 1
 
             duration = self._calc_duration(job.get("start"), job.get("end"))
