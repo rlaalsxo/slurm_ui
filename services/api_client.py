@@ -116,3 +116,15 @@ def get_job_log(job_id):
     res.raise_for_status()
     return res.text
 
+
+def drain_node(node_name):
+    res = requests.post(f"{get_base_url()}/slurm/node/{node_name}/drain", timeout=10)
+    res.raise_for_status()
+    return res.json()
+
+
+def resume_node(node_name):
+    res = requests.post(f"{get_base_url()}/slurm/node/{node_name}/resume", timeout=10)
+    res.raise_for_status()
+    return res.json()
+

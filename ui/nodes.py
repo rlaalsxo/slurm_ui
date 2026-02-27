@@ -1,5 +1,6 @@
 import customtkinter as ctk
-from services.api_client import get_nodes
+from services.api_client import get_nodes, drain_node, resume_node
+from tkinter import messagebox
 import threading
 import requests
 
@@ -226,8 +227,34 @@ class NodesFrame(ctk.CTkFrame):
         textbox.tag_config("error", foreground="#ff5555")
         textbox.tag_config("default", foreground="#cccccc")
 
-        close_btn = ctk.CTkButton(popup, text="Close", width=100, command=popup.destroy)
-        close_btn.pack(pady=(0, 15))
+        btn_frame = ctk.CTkFrame(popup)
+        btn_frame.pack(pady=(0, 15))
+
+        def on_drain():
+            if not messagebox.askyesno("Drain Node", f"{node_name} 노드를 Drain 하시겠습니까?"):
+                return
+            try:
+                drain_node(node_name)
+                messagebox.showinfo("Success", f"{node_name} drained")
+                self.fetch_and_render()
+                popup.destroy()
+            except Exception as e:
+                messagebox.showerror("Error", f"Drain 실패: {e}")
+
+        def on_resume():
+            if not messagebox.askyesno("Resume Node", f"{node_name} 노드를 Resume 하시겠습니까?"):
+                return
+            try:
+                resume_node(node_name)
+                messagebox.showinfo("Success", f"{node_name} resumed")
+                self.fetch_and_render()
+                popup.destroy()
+            except Exception as e:
+                messagebox.showerror("Error", f"Resume 실패: {e}")
+
+        ctk.CTkButton(btn_frame, text="Drain", width=100, fg_color="#cc7700", hover_color="#ff9900", command=on_drain).pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="Resume", width=100, fg_color="#007744", hover_color="#00aa66", command=on_resume).pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="Close", width=100, command=popup.destroy).pack(side="left", padx=5)
 
         def load_and_update():
             try:
