@@ -203,6 +203,7 @@ class NodesFrame(ctk.CTkFrame):
 
         popup.transient(self.winfo_toplevel())
         popup.attributes("-topmost", True)
+        popup.after(300, lambda: popup.attributes("-topmost", False))
         popup.lift()
         popup.focus_force()
 

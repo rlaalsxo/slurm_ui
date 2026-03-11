@@ -167,6 +167,7 @@ class JobsHistoryFrame(ctk.CTkFrame):
         popup.title(title)
         popup.geometry("400x150")
         popup.attributes("-topmost", True)
+        popup.after(300, lambda: popup.attributes("-topmost", False))
 
         label = ctk.CTkLabel(popup, text=message, font=ctk.CTkFont(size=13))
         label.pack(expand=True, padx=20, pady=20)
@@ -179,6 +180,7 @@ class JobsHistoryFrame(ctk.CTkFrame):
         popup.title(f"Job Log: {job_id}")
         popup.geometry("900x600")
         popup.attributes("-topmost", True)
+        popup.after(300, lambda: popup.attributes("-topmost", False))
 
         textbox = ctk.CTkTextbox(popup, font=ctk.CTkFont(family="Consolas", size=12))
         textbox.pack(fill="both", expand=True, padx=10, pady=10)

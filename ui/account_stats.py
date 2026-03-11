@@ -288,6 +288,7 @@ class AccountStatsFrame(ctk.CTkFrame):
         popup.title(f"Account Details: {account_name}")
         popup.geometry("600x500")
         popup.attributes("-topmost", True)
+        popup.after(300, lambda: popup.attributes("-topmost", False))
 
         textbox = ctk.CTkTextbox(popup, font=ctk.CTkFont(family="Consolas", size=13))
         textbox.pack(fill="both", expand=True, padx=10, pady=10)
