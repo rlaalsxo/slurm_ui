@@ -108,13 +108,16 @@ def get_job_stats(start=None, end=None):
 
 
 def get_job_log(job_id):
-    """SLURM Job 로그 조회 (Curieus 서버 경유)"""
+    """SLURM Job 로그 조회 (Presigned URL 방식)"""
     url = get_server_url()
     if not url:
         raise ValueError("SERVER_URL not configured in .env")
-    res = requests.get(f"{url}/slurm/logs/{job_id}", timeout=30)
+    res = requests.get(f"{url}/slurm/logs/{job_id}", timeout=10)
     res.raise_for_status()
-    return res.text
+    presigned_url = res.json()["url"]
+    log_res = requests.get(presigned_url, timeout=30, verify=False)
+    log_res.raise_for_status()
+    return log_res.text
 
 
 def drain_node(node_name):
