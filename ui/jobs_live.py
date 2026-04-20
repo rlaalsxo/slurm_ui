@@ -36,6 +36,8 @@ class JobsLiveFrame(ctk.CTkFrame):
         self.textbox.tag_config("pending", foreground="#ffcc00")  # 노랑
         self.textbox.tag_config("error", foreground="#ff3333")    # 빨강
         self.textbox.tag_config("default", foreground="#cccccc")  # 기본 회색
+        self.textbox.tag_config("vessl_running", foreground="#bb86fc")  # 보라 (VESSL 실행중)
+        self.textbox.tag_config("vessl_pending", foreground="#9966cc")  # 연보라 (VESSL 대기)
 
         # 상태 플래그 및 타이머
         self._refreshing = False
@@ -91,17 +93,20 @@ class JobsLiveFrame(ctk.CTkFrame):
 
             # 헤더
             header = (
-                f"{'JOBID':8} {'PARTITION':14} {'NAME':20} {'USER':12} {'ACCOUNT':12} "
+                f"{'SOURCE':8} {'JOBID':8} {'PARTITION':14} {'NAME':20} {'USER':12} {'ACCOUNT':12} "
                 f"{'ST':4} {'TIME':8} {'NODES':6} NODELIST(REASON)\n"
             )
             self.textbox.insert("end", header, "default")
-            self.textbox.insert("end", "-" * 120 + "\n", "default")
+            self.textbox.insert("end", "-" * 130 + "\n", "default")
 
             # 데이터 표시
             for job in jobs:
                 st = str(job.get("state", "-"))
-                tag = self._get_state_tag(st)
+                source = str(job.get("source", "slurm"))
+                tag = self._get_state_tag(st, source)
+                source_label = "VESSL" if source == "vessl" else "SLURM"
                 line = (
+                    f"{source_label:8} "
                     f"{str(job.get('job_id', '-'))[:8]:8} "
                     f"{str(job.get('partition', '-'))[:14]:14} "
                     f"{str(job.get('name', '-'))[:20]:20} "
@@ -122,8 +127,13 @@ class JobsLiveFrame(ctk.CTkFrame):
             self.refresh_button.configure(state="normal")
             self._refreshing = False
 
-    def _get_state_tag(self, state: str) -> str:
+    def _get_state_tag(self, state: str, source: str = "slurm") -> str:
         s = str(state).upper().strip()
+        if source == "vessl":
+            if s in ("R", "RUNNING"):
+                return "vessl_running"
+            elif s in ("PD", "PENDING"):
+                return "vessl_pending"
         if s in ("R", "RUNNING"):
             return "running"
         elif s in ("PD", "PENDING"):

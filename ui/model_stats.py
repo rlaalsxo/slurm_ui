@@ -70,6 +70,7 @@ class ModelStatsFrame(ctk.CTkFrame):
         self.textbox.tag_config("warn", foreground="#ffcc00")
         self.textbox.tag_config("bad", foreground="#ff6666")
         self.textbox.tag_config("default", foreground="#cccccc")
+        self.textbox.tag_config("vessl", foreground="#bb86fc")
 
         # 초기 정렬 표시 업데이트
         self._update_sort_buttons()
@@ -147,16 +148,22 @@ class ModelStatsFrame(ctk.CTkFrame):
         self.textbox.delete("1.0", "end")
         # ✅ 열 간격 확장 + Complete 라벨 적용
         header = (
-            f"{'Model':18} {'Total':8} {'Complete':10} {'Fail':8} {'Cancel':10} "
+            f"{'Source':8} {'Model':18} {'Total':8} {'Complete':10} {'Fail':8} {'Cancel':10} "
             f"{'Avg':12} {'Min':12} {'Max':12}\n"
         )
         self.textbox.insert("end", header, "default")
-        self.textbox.insert("end", "-" * 95 + "\n", "default")
+        self.textbox.insert("end", "-" * 105 + "\n", "default")
 
         for s in sorted_stats:
+            source = s.get("source", "slurm")
+            source_label = source.upper() if "/" not in source else source.upper()
             success_rate = s["completed"] / s["total"] if s["total"] else 0
-            tag = "good" if success_rate > 0.9 else "warn" if success_rate > 0.6 else "bad"
+            if "vessl" in source:
+                tag = "vessl"
+            else:
+                tag = "good" if success_rate > 0.9 else "warn" if success_rate > 0.6 else "bad"
             line = (
+                f"{source_label[:8]:8} "
                 f"{s['model'][:18]:18} "
                 f"{s['total']:8} "
                 f"{s['completed']:10} "

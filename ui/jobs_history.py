@@ -49,6 +49,9 @@ class JobsHistoryFrame(ctk.CTkFrame):
         self.textbox.tag_config("failed", foreground="#ff6666")     # 빨강
         self.textbox.tag_config("cancelled", foreground="#ffcc00")  # 노랑
         self.textbox.tag_config("default", foreground="#cccccc")    # 회색
+        self.textbox.tag_config("vessl_completed", foreground="#bb86fc")  # 보라 (VESSL 완료)
+        self.textbox.tag_config("vessl_failed", foreground="#cf6679")     # 연분홍 (VESSL 실패)
+        self.textbox.tag_config("vessl_default", foreground="#9966cc")    # 연보라 (VESSL 기타)
 
         # job 데이터 캐싱 (더블클릭 시 사용)
         self._jobs_cache = []
@@ -96,11 +99,11 @@ class JobsHistoryFrame(ctk.CTkFrame):
             self._job_line_map = {}
 
             header = (
-                f"{'JobID':10} {'Name':20} {'User':10} {'Account':10} "
+                f"{'Source':8} {'JobID':10} {'Name':20} {'User':10} {'Account':10} "
                 f"{'State':10} {'Start':19} {'End':19} {'Node':12}\n"
             )
             self.textbox.insert("end", header, "default")
-            self.textbox.insert("end", "-" * 125 + "\n", "default")
+            self.textbox.insert("end", "-" * 135 + "\n", "default")
             self.textbox.insert("end", "  (Double-click a COMPLETED/FAILED job to view log)\n\n", "default")
 
             jobs.sort(key=lambda j: j.get("end") or "", reverse=True)
@@ -110,8 +113,11 @@ class JobsHistoryFrame(ctk.CTkFrame):
                 line_idx = int(self.textbox.index("end-1c").split(".")[0])
                 self._job_line_map[line_idx] = job
 
-                tag = self._get_state_tag(job.get("state", ""))
+                source = job.get("source", "slurm")
+                tag = self._get_state_tag(job.get("state", ""), source)
+                source_label = "VESSL" if source == "vessl" else "SLURM"
                 line = (
+                    f"{source_label:8} "
                     f"{job.get('job_id', '-')[:10]:10} "
                     f"{job.get('job_name', '-')[:20]:20} "
                     f"{job.get('user', '-')[:10]:10} "
@@ -130,16 +136,21 @@ class JobsHistoryFrame(ctk.CTkFrame):
             self.textbox.delete("1.0", "end")
             self.textbox.insert("end", f"Error fetching job history: {e}\n", "failed")
 
-    def _get_state_tag(self, state: str):
+    def _get_state_tag(self, state: str, source: str = "slurm"):
         s = state.upper()
+        if source == "vessl":
+            if s in ("COMPLETED", "CD"):
+                return "vessl_completed"
+            elif s in ("FAILED", "F"):
+                return "vessl_failed"
+            return "vessl_default"
         if s in ("COMPLETED", "CD"):
             return "completed"
         elif s in ("FAILED", "F"):
             return "failed"
         elif s.startswith("CANCELLED") or s == "CA":
             return "cancelled"
-        else:
-            return "default"
+        return "default"
 
     # ✅ 더블클릭 → 로그 조회
     def _on_double_click(self, event):
