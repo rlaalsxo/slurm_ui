@@ -106,7 +106,7 @@ class JobsHistoryFrame(ctk.CTkFrame):
             self.textbox.insert("end", "-" * 135 + "\n", "default")
             self.textbox.insert("end", "  (Double-click a COMPLETED/FAILED job to view log)\n\n", "default")
 
-            jobs.sort(key=lambda j: j.get("end") or "", reverse=True)
+            jobs.sort(key=lambda j: j.get("start") or "", reverse=True)
 
             for job in jobs:
                 # 현재 줄 번호 기록

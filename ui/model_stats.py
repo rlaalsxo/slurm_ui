@@ -148,22 +148,20 @@ class ModelStatsFrame(ctk.CTkFrame):
         self.textbox.delete("1.0", "end")
         # ✅ 열 간격 확장 + Complete 라벨 적용
         header = (
-            f"{'Source':8} {'Model':18} {'Total':8} {'Complete':10} {'Fail':8} {'Cancel':10} "
+            f"{'Model':18} {'Total':8} {'Complete':10} {'Fail':8} {'Cancel':10} "
             f"{'Avg':12} {'Min':12} {'Max':12}\n"
         )
         self.textbox.insert("end", header, "default")
-        self.textbox.insert("end", "-" * 105 + "\n", "default")
+        self.textbox.insert("end", "-" * 96 + "\n", "default")
 
         for s in sorted_stats:
             source = s.get("source", "slurm")
-            source_label = source.upper() if "/" not in source else source.upper()
             success_rate = s["completed"] / s["total"] if s["total"] else 0
             if "vessl" in source:
                 tag = "vessl"
             else:
                 tag = "good" if success_rate > 0.9 else "warn" if success_rate > 0.6 else "bad"
             line = (
-                f"{source_label[:8]:8} "
                 f"{s['model'][:18]:18} "
                 f"{s['total']:8} "
                 f"{s['completed']:10} "
