@@ -21,6 +21,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self._init_background_tasks()
         self._jobs_cache = []
         self._job_line_map = {}
+        self._model_filter_values = [ALL_MODELS]
 
         control_frame = ctk.CTkFrame(self)
         control_frame.pack(fill="x", padx=10, pady=(10, 5))
@@ -56,6 +57,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
             command=lambda _: self.display_history(),
         )
         self.model_filter_menu.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        self._bind_model_filter_wheel()
 
         self.textbox = ctk.CTkTextbox(
             self,
@@ -102,8 +104,33 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         models = sorted({extract_model(job.get("job_name")) for job in jobs})
         values = [ALL_MODELS] + models
 
+        self._model_filter_values = values
         self.model_filter_menu.configure(values=values)
         self.model_filter_var.set(current_model if current_model in values else ALL_MODELS)
+
+    def _bind_model_filter_wheel(self):
+        self.model_filter_menu.bind("<MouseWheel>", self._on_model_filter_wheel)
+        self.model_filter_menu.bind("<Button-4>", self._on_model_filter_wheel)
+        self.model_filter_menu.bind("<Button-5>", self._on_model_filter_wheel)
+        self.model_label.bind("<MouseWheel>", self._on_model_filter_wheel)
+        self.model_label.bind("<Button-4>", self._on_model_filter_wheel)
+        self.model_label.bind("<Button-5>", self._on_model_filter_wheel)
+
+    def _on_model_filter_wheel(self, event):
+        if len(self._model_filter_values) <= 1:
+            return "break"
+
+        current_model = self.model_filter_var.get()
+        try:
+            index = self._model_filter_values.index(current_model)
+        except ValueError:
+            index = 0
+
+        step = 1 if getattr(event, "num", None) == 5 or getattr(event, "delta", 0) < 0 else -1
+        next_index = (index + step) % len(self._model_filter_values)
+        self.model_filter_var.set(self._model_filter_values[next_index])
+        self.display_history()
+        return "break"
 
     def _get_filtered_jobs(self):
         selected_model = self.model_filter_var.get()
@@ -242,6 +269,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.textbox.delete("1.0", "end")
         self._jobs_cache = []
         self._job_line_map = {}
+        self._model_filter_values = [ALL_MODELS]
         self.model_filter_menu.configure(values=[ALL_MODELS])
         self.model_filter_var.set(ALL_MODELS)
         self.textbox.insert(
