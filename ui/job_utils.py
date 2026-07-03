@@ -4,6 +4,7 @@ from collections import defaultdict
 
 
 ALL_MODELS = "All"
+ALL_ACCOUNTS = "All"
 
 
 def safe_text(value, default="-"):
@@ -170,13 +171,14 @@ def aggregate_jobs_by_account(jobs):
     ]
 
 
-def aggregate_model_users(jobs, model):
-    """특정 모델(백엔드 모델명 기준)에 속한 Job들을 유저별로 집계한다.
+def aggregate_model_accounts(jobs, model):
+    """특정 모델(백엔드 모델명 기준)에 속한 Job들을 account별로 집계한다.
 
+    (SLURM 잡의 user는 대부분 root라 의미가 없어 account로 그룹핑한다.)
     min/max/avg 실행시간은 모두 '완료(COMPLETED)' Job 기준으로 계산한다
     (실행시간이 의미 있는 집합으로 통일; 완료 0건이면 0).
     """
-    users = defaultdict(lambda: {
+    accounts = defaultdict(lambda: {
         "total": 0,
         "completed": 0,
         "failed": 0,
@@ -188,9 +190,9 @@ def aggregate_model_users(jobs, model):
         if model_key(job.get("job_name")) != model:
             continue
 
-        user = safe_text(job.get("user"), "unknown")
+        account = safe_text(job.get("account"), "unknown")
         state = job.get("state")
-        data = users[user]
+        data = accounts[account]
 
         data["total"] += 1
         if is_completed(state):
@@ -204,10 +206,10 @@ def aggregate_model_users(jobs, model):
             data["cancelled"] += 1
 
     result = []
-    for user, data in users.items():
+    for account, data in accounts.items():
         times = data["completed_seconds"]
         result.append({
-            "user": user,
+            "account": account,
             "total": data["total"],
             "completed": data["completed"],
             "failed": data["failed"],
@@ -225,7 +227,7 @@ def aggregate_model_stats(jobs):
     model_key로 그룹핑하되 dynoGen은 변이별로 나뉜다.
     avg/min/max 실행시간은 모두 '완료(COMPLETED)' Job만 대상으로 계산한다
     (실패/취소 Job은 시간 통계에서 제외; 완료 0건이면 0).
-    시간은 초 단위로 반환한다. (유저 드릴다운 aggregate_model_users와 동일 기준)
+    시간은 초 단위로 반환한다. (account 드릴다운 aggregate_model_accounts와 동일 기준)
     """
     stats = defaultdict(lambda: {
         "total": 0,

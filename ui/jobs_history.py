@@ -4,11 +4,14 @@ from services.api_client import get_job_log, get_jobs
 from ui.background import BackgroundTaskMixin, run_detached
 from ui.date_utils import read_date_range, set_recent_range
 from ui.job_utils import (
+    ALL_ACCOUNTS,
     ALL_MODELS,
     cell,
     extract_model,
+    format_seconds,
     is_completed,
     is_failed,
+    job_elapsed_seconds,
     normalized_state,
     safe_text,
     source_label,
@@ -22,6 +25,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self._jobs_cache = []
         self._job_line_map = {}
         self._model_filter_values = [ALL_MODELS]
+        self._account_filter_values = [ALL_ACCOUNTS]
 
         control_frame = ctk.CTkFrame(self)
         control_frame.pack(fill="x", padx=10, pady=(10, 5))
@@ -58,6 +62,19 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         )
         self.model_filter_menu.grid(row=1, column=1, padx=5, pady=5, sticky="w")
         self._bind_model_filter_wheel()
+
+        self.account_label = ctk.CTkLabel(control_frame, text="Account:")
+        self.account_label.grid(row=1, column=2, padx=5, pady=5, sticky="e")
+        self.account_filter_var = ctk.StringVar(value=ALL_ACCOUNTS)
+        self.account_filter_menu = ctk.CTkOptionMenu(
+            control_frame,
+            values=[ALL_ACCOUNTS],
+            variable=self.account_filter_var,
+            width=180,
+            command=lambda _: self.display_history(),
+        )
+        self.account_filter_menu.grid(row=1, column=3, padx=5, pady=5, sticky="w")
+        self._bind_account_filter_wheel()
 
         self.textbox = ctk.CTkTextbox(
             self,
@@ -97,6 +114,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
     def _set_jobs(self, jobs):
         self._jobs_cache = jobs
         self._update_model_filter_options(jobs)
+        self._update_account_filter_options(jobs)
         self.display_history()
 
     def _update_model_filter_options(self, jobs):
@@ -107,6 +125,15 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self._model_filter_values = values
         self.model_filter_menu.configure(values=values)
         self.model_filter_var.set(current_model if current_model in values else ALL_MODELS)
+
+    def _update_account_filter_options(self, jobs):
+        current_account = self.account_filter_var.get()
+        accounts = sorted({safe_text(job.get("account"), "unknown") for job in jobs})
+        values = [ALL_ACCOUNTS] + accounts
+
+        self._account_filter_values = values
+        self.account_filter_menu.configure(values=values)
+        self.account_filter_var.set(current_account if current_account in values else ALL_ACCOUNTS)
 
     def _bind_model_filter_wheel(self):
         self.model_filter_menu.bind("<MouseWheel>", self._on_model_filter_wheel)
@@ -132,13 +159,37 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.display_history()
         return "break"
 
+    def _bind_account_filter_wheel(self):
+        self.account_filter_menu.bind("<MouseWheel>", self._on_account_filter_wheel)
+        self.account_filter_menu.bind("<Button-4>", self._on_account_filter_wheel)
+        self.account_filter_menu.bind("<Button-5>", self._on_account_filter_wheel)
+        self.account_label.bind("<MouseWheel>", self._on_account_filter_wheel)
+        self.account_label.bind("<Button-4>", self._on_account_filter_wheel)
+        self.account_label.bind("<Button-5>", self._on_account_filter_wheel)
+
+    def _on_account_filter_wheel(self, event):
+        if len(self._account_filter_values) <= 1:
+            return "break"
+
+        current_account = self.account_filter_var.get()
+        try:
+            index = self._account_filter_values.index(current_account)
+        except ValueError:
+            index = 0
+
+        step = 1 if getattr(event, "num", None) == 5 or getattr(event, "delta", 0) < 0 else -1
+        next_index = (index + step) % len(self._account_filter_values)
+        self.account_filter_var.set(self._account_filter_values[next_index])
+        self.display_history()
+        return "break"
+
     def _get_filtered_jobs(self):
         selected_model = self.model_filter_var.get()
-        if selected_model == ALL_MODELS:
-            return list(self._jobs_cache)
+        selected_account = self.account_filter_var.get()
         return [
             job for job in self._jobs_cache
-            if extract_model(job.get("job_name")) == selected_model
+            if (selected_model == ALL_MODELS or extract_model(job.get("job_name")) == selected_model)
+            and (selected_account == ALL_ACCOUNTS or safe_text(job.get("account"), "unknown") == selected_account)
         ]
 
     def display_history(self):
@@ -149,15 +200,20 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
         header = (
             f"{'Source':8} {'JobID':10} {'Name':20} {'User':10} {'Account':10} "
-            f"{'State':10} {'Start':19} {'End':19} {'Node':12}\n"
+            f"{'State':10} {'Start':19} {'End':19} {'Elapsed':13} {'Node':12}\n"
         )
         self.textbox.insert("end", header, "default")
-        self.textbox.insert("end", "-" * 135 + "\n", "default")
+        self.textbox.insert("end", "-" * 149 + "\n", "default")
 
+        active_filters = []
         if self.model_filter_var.get() != ALL_MODELS:
+            active_filters.append(f"Model={self.model_filter_var.get()}")
+        if self.account_filter_var.get() != ALL_ACCOUNTS:
+            active_filters.append(f"Account={self.account_filter_var.get()}")
+        if active_filters:
             self.textbox.insert(
                 "end",
-                f"  Model filter: {self.model_filter_var.get()} ({len(jobs)}/{len(self._jobs_cache)} jobs)\n",
+                f"  Filter: {', '.join(active_filters)} ({len(jobs)}/{len(self._jobs_cache)} jobs)\n",
                 "default",
             )
         self.textbox.insert("end", "  (Double-click a COMPLETED/FAILED job to view log)\n\n", "default")
@@ -180,6 +236,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
             f"{cell(job.get('state'), 10)} "
             f"{cell(job.get('start'), 19)} "
             f"{cell(job.get('end'), 19)} "
+            f"{cell(format_seconds(job_elapsed_seconds(job)), 13)} "
             f"{cell(job.get('node_list'), 12)}\n"
         )
 
@@ -272,6 +329,9 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self._model_filter_values = [ALL_MODELS]
         self.model_filter_menu.configure(values=[ALL_MODELS])
         self.model_filter_var.set(ALL_MODELS)
+        self._account_filter_values = [ALL_ACCOUNTS]
+        self.account_filter_menu.configure(values=[ALL_ACCOUNTS])
+        self.account_filter_var.set(ALL_ACCOUNTS)
         self.textbox.insert(
             "end",
             "Job History tab has been reset.\n"

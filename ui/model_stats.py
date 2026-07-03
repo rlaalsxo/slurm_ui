@@ -4,8 +4,8 @@ from services.api_client import get_jobs
 from ui.background import BackgroundTaskMixin, run_detached
 from ui.date_utils import read_date_range, set_all_range, set_recent_range
 from ui.job_utils import (
+    aggregate_model_accounts,
     aggregate_model_stats,
-    aggregate_model_users,
     cell,
     format_seconds,
     safe_text,
@@ -186,11 +186,11 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
         model = self._model_line_map.get(line_num)
         if not model or not self._last_range:
             return
-        self._show_user_stats_popup(model)
+        self._show_account_stats_popup(model)
 
-    def _show_user_stats_popup(self, model):
+    def _show_account_stats_popup(self, model):
         popup = ctk.CTkToplevel(self)
-        popup.title(f"User Stats: {model}")
+        popup.title(f"Account Stats: {model}")
         popup.geometry("720x560")
         popup.attributes("-topmost", True)
         popup.after(300, lambda: popup.attributes("-topmost", False))
@@ -204,10 +204,10 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
         textbox.tag_config("title", foreground="#66aaff")
         textbox.tag_config("default", foreground="#cccccc")
 
-        textbox.insert("end", f"Loading per-user stats for {model}...", "default")
+        textbox.insert("end", f"Loading per-account stats for {model}...", "default")
 
         if self._raw_jobs_cache is not None:
-            self._render_user_stats(textbox, model, self._raw_jobs_cache)
+            self._render_account_stats(textbox, model, self._raw_jobs_cache)
             return
 
         start_iso, end_iso = self._last_range
@@ -215,18 +215,18 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
             popup,
             task=lambda: get_jobs(start=start_iso, end=end_iso),
             on_success=lambda jobs: self._on_raw_jobs_loaded(textbox, model, jobs),
-            on_error=lambda exc: self._render_user_stats_error(textbox, exc),
+            on_error=lambda exc: self._render_account_stats_error(textbox, exc),
         )
 
     def _on_raw_jobs_loaded(self, textbox, model, jobs):
         self._raw_jobs_cache = jobs
-        self._render_user_stats(textbox, model, jobs)
+        self._render_account_stats(textbox, model, jobs)
 
-    def _render_user_stats(self, textbox, model, jobs):
+    def _render_account_stats(self, textbox, model, jobs):
         textbox.delete("1.0", "end")
 
         rows = sorted(
-            aggregate_model_users(jobs, model),
+            aggregate_model_accounts(jobs, model),
             key=lambda item: item["total"],
             reverse=True,
         )
@@ -235,7 +235,7 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
         textbox.insert("end", "  (min / max / avg are over COMPLETED jobs)\n\n", "default")
 
         header = (
-            f"{'User':16} {'Total':8} {'Complete':10} {'Fail':8} {'Cancel':10} "
+            f"{'Account':16} {'Total':8} {'Complete':10} {'Fail':8} {'Cancel':10} "
             f"{'Avg':12} {'Min':12} {'Max':12}\n"
         )
         textbox.insert("end", header, "default")
@@ -246,11 +246,11 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
             return
 
         for row in rows:
-            textbox.insert("end", self._format_user_line(row), success_tag(row["completed"], row["total"]))
+            textbox.insert("end", self._format_account_line(row), success_tag(row["completed"], row["total"]))
 
-    def _format_user_line(self, row):
+    def _format_account_line(self, row):
         return (
-            f"{cell(row['user'], 16)} "
+            f"{cell(row['account'], 16)} "
             f"{row['total']:8} "
             f"{row['completed']:10} "
             f"{row['failed']:8} "
@@ -260,9 +260,9 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
             f"{format_seconds(row['max_sec']):12}\n"
         )
 
-    def _render_user_stats_error(self, textbox, exc):
+    def _render_account_stats_error(self, textbox, exc):
         textbox.delete("1.0", "end")
-        textbox.insert("end", f"Error fetching per-user stats: {exc}", "bad")
+        textbox.insert("end", f"Error fetching per-account stats: {exc}", "bad")
 
     def _set_loading(self, message):
         self.textbox.delete("1.0", "end")
