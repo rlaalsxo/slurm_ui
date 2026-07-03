@@ -1,9 +1,16 @@
 import customtkinter as ctk
 
-from services.api_client import get_job_stats
-from ui.background import BackgroundTaskMixin
+from services.api_client import get_jobs
+from ui.background import BackgroundTaskMixin, run_detached
 from ui.date_utils import read_date_range, set_all_range, set_recent_range
-from ui.job_utils import cell, hms_to_seconds, safe_text, success_tag
+from ui.job_utils import (
+    aggregate_model_stats,
+    aggregate_model_users,
+    cell,
+    format_seconds,
+    safe_text,
+    success_tag,
+)
 
 
 class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
@@ -21,6 +28,9 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.current_sort_key = "total"
         self.sort_reverse = True
         self.cached_stats = []
+        self._model_line_map = {}
+        self._last_range = None
+        self._raw_jobs_cache = None
 
         control_frame = ctk.CTkFrame(self)
         control_frame.pack(fill="x", padx=10, pady=(10, 5))
@@ -68,6 +78,8 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.textbox.tag_config("default", foreground="#cccccc")
         self.textbox.tag_config("vessl", foreground="#bb86fc")
 
+        self.textbox.bind("<Double-Button-1>", self._on_double_click)
+
         self._update_sort_buttons()
 
     def set_range(self, days):
@@ -85,15 +97,20 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
             self._show_error(str(exc))
             return
 
+        self._last_range = (start_iso, end_iso)
+        self._raw_jobs_cache = None
+
         self.run_background(
-            task=lambda: get_job_stats(start=start_iso, end=end_iso),
+            task=lambda: get_jobs(start=start_iso, end=end_iso),
             on_start=lambda: self._set_loading("Loading model statistics..."),
             on_success=self._set_stats,
             on_error=lambda exc: self._show_error(f"Error fetching stats: {exc}"),
         )
 
-    def _set_stats(self, stats):
-        self.cached_stats = stats
+    def _set_stats(self, jobs):
+        # raw jobs를 캐시(유저 드릴다운이 재사용)하고 모델별로 집계한다.
+        self._raw_jobs_cache = jobs
+        self.cached_stats = aggregate_model_stats(jobs)
         self.display_stats()
 
     def display_stats(self):
@@ -109,26 +126,29 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
         )
 
         self.textbox.delete("1.0", "end")
+        self._model_line_map = {}
+
         header = (
             f"{'Model':18} {'Total':8} {'Complete':10} {'Fail':8} {'Cancel':10} "
             f"{'Avg':12} {'Min':12} {'Max':12}\n"
         )
         self.textbox.insert("end", header, "default")
         self.textbox.insert("end", "-" * 96 + "\n", "default")
+        self.textbox.insert("end", "  (Double-click a model row to see per-user usage)\n\n", "default")
 
         for stat in sorted_stats:
+            line_idx = int(self.textbox.index("end-1c").split(".")[0])
+            self._model_line_map[line_idx] = stat.get("model")
             self.textbox.insert("end", self._format_stat_line(stat), self._stat_tag(stat))
 
         self._update_sort_buttons()
 
     def _sort_value(self, item):
         if self.current_sort_key == "avg_time":
-            return hms_to_seconds(item.get("avg_time"))
+            return item.get("avg_sec", 0)
         return item.get(self.current_sort_key, 0)
 
     def _stat_tag(self, stat):
-        if "vessl" in safe_text(stat.get("source"), "slurm").lower():
-            return "vessl"
         return success_tag(stat.get("completed", 0), stat.get("total", 0))
 
     def _format_stat_line(self, stat):
@@ -138,9 +158,9 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
             f"{stat.get('completed', 0):10} "
             f"{stat.get('failed', 0):8} "
             f"{stat.get('cancelled', 0):10} "
-            f"{cell(stat.get('avg_time'), 12)} "
-            f"{cell(stat.get('min_time'), 12)} "
-            f"{cell(stat.get('max_time'), 12)}\n"
+            f"{format_seconds(stat.get('avg_sec', 0)):12} "
+            f"{format_seconds(stat.get('min_sec', 0)):12} "
+            f"{format_seconds(stat.get('max_sec', 0)):12}\n"
         )
 
     def sort_by(self, key):
@@ -160,6 +180,90 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
             else:
                 btn.configure(text=text)
 
+    def _on_double_click(self, event):
+        index = self.textbox.index(f"@{event.x},{event.y}")
+        line_num = int(index.split(".")[0])
+        model = self._model_line_map.get(line_num)
+        if not model or not self._last_range:
+            return
+        self._show_user_stats_popup(model)
+
+    def _show_user_stats_popup(self, model):
+        popup = ctk.CTkToplevel(self)
+        popup.title(f"User Stats: {model}")
+        popup.geometry("720x560")
+        popup.attributes("-topmost", True)
+        popup.after(300, lambda: popup.attributes("-topmost", False))
+
+        textbox = ctk.CTkTextbox(popup, font=ctk.CTkFont(family="Consolas", size=13))
+        textbox.pack(fill="both", expand=True, padx=10, pady=10)
+
+        textbox.tag_config("good", foreground="#00ff66")
+        textbox.tag_config("warn", foreground="#ffcc00")
+        textbox.tag_config("bad", foreground="#ff6666")
+        textbox.tag_config("title", foreground="#66aaff")
+        textbox.tag_config("default", foreground="#cccccc")
+
+        textbox.insert("end", f"Loading per-user stats for {model}...", "default")
+
+        if self._raw_jobs_cache is not None:
+            self._render_user_stats(textbox, model, self._raw_jobs_cache)
+            return
+
+        start_iso, end_iso = self._last_range
+        run_detached(
+            popup,
+            task=lambda: get_jobs(start=start_iso, end=end_iso),
+            on_success=lambda jobs: self._on_raw_jobs_loaded(textbox, model, jobs),
+            on_error=lambda exc: self._render_user_stats_error(textbox, exc),
+        )
+
+    def _on_raw_jobs_loaded(self, textbox, model, jobs):
+        self._raw_jobs_cache = jobs
+        self._render_user_stats(textbox, model, jobs)
+
+    def _render_user_stats(self, textbox, model, jobs):
+        textbox.delete("1.0", "end")
+
+        rows = sorted(
+            aggregate_model_users(jobs, model),
+            key=lambda item: item["total"],
+            reverse=True,
+        )
+
+        textbox.insert("end", f"  Model: {model}\n", "title")
+        textbox.insert("end", "  (min / max / avg are over COMPLETED jobs)\n\n", "default")
+
+        header = (
+            f"{'User':16} {'Total':8} {'Complete':10} {'Fail':8} {'Cancel':10} "
+            f"{'Avg':12} {'Min':12} {'Max':12}\n"
+        )
+        textbox.insert("end", header, "default")
+        textbox.insert("end", "-" * 92 + "\n", "default")
+
+        if not rows:
+            textbox.insert("end", "\nNo jobs found for this model.\n", "default")
+            return
+
+        for row in rows:
+            textbox.insert("end", self._format_user_line(row), success_tag(row["completed"], row["total"]))
+
+    def _format_user_line(self, row):
+        return (
+            f"{cell(row['user'], 16)} "
+            f"{row['total']:8} "
+            f"{row['completed']:10} "
+            f"{row['failed']:8} "
+            f"{row['cancelled']:10} "
+            f"{format_seconds(row['avg_sec']):12} "
+            f"{format_seconds(row['min_sec']):12} "
+            f"{format_seconds(row['max_sec']):12}\n"
+        )
+
+    def _render_user_stats_error(self, textbox, exc):
+        textbox.delete("1.0", "end")
+        textbox.insert("end", f"Error fetching per-user stats: {exc}", "bad")
+
     def _set_loading(self, message):
         self.textbox.delete("1.0", "end")
         self.textbox.insert("end", f"{message}\n", "default")
@@ -178,3 +282,6 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
             "default",
         )
         self.cached_stats = []
+        self._model_line_map = {}
+        self._last_range = None
+        self._raw_jobs_cache = None
