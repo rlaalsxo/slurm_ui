@@ -115,12 +115,25 @@ def get_job_stats(start=None, end=None):
     )
 
 
-def get_job_log(job_id):
+def get_job_log(job_id, job=None):
     """SLURM Job 로그 조회 (Presigned URL 방식)"""
     url = get_server_url()
     if not url:
         raise ValueError("SERVER_URL not configured in .env")
-    presigned_url = _request_json("GET", f"{url}/slurm/logs/{job_id}", timeout=10)["url"]
+    params = {}
+    if job:
+        params = {
+            "user_id": job.get("user_id") or job.get("account"),
+            "job_id": job.get("internal_job_id"),
+            "model_id": job.get("model_id"),
+        }
+        params = {key: value for key, value in params.items() if value not in (None, "")}
+    presigned_url = _request_json(
+        "GET",
+        f"{url}/slurm/logs/{job_id}",
+        params=params,
+        timeout=10,
+    )["url"]
     log_res = _session.get(presigned_url, timeout=30, verify=VERIFY_PRESIGNED_URL)
     log_res.raise_for_status()
     return log_res.text

@@ -269,7 +269,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         state = normalized_state(job.get("state"))
         job_id = safe_text(job.get("job_id"), "")
         if is_completed(state) or is_failed(state):
-            self._show_log_popup(job_id)
+            self._show_log_popup(job)
             return
 
         self._show_message_popup(
@@ -291,7 +291,8 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         btn = ctk.CTkButton(popup, text="OK", width=100, command=popup.destroy)
         btn.pack(pady=(0, 15))
 
-    def _show_log_popup(self, job_id):
+    def _show_log_popup(self, job):
+        job_id = safe_text(job.get("job_id"), "")
         popup = ctk.CTkToplevel(self)
         popup.title(f"Job Log: {job_id}")
         popup.geometry("900x600")
@@ -304,7 +305,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
         run_detached(
             popup,
-            task=lambda: get_job_log(job_id),
+            task=lambda: get_job_log(job_id, job),
             on_success=lambda content: self._update_log_textbox(textbox, content),
             on_error=lambda exc: self._update_log_textbox(textbox, f"Error fetching log: {exc}"),
         )
