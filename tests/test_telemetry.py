@@ -2,15 +2,17 @@ import pytest
 from services import api_client
 
 
-def test_diagnostics_refuses_plaintext_key_transmission(monkeypatch):
-    monkeypatch.setenv("LOG_MANAGER_URL_MAIN", "http://remote.example")
+@pytest.mark.parametrize("url", ["ftp://remote.example", "http://user:pass@remote.example", "http://remote.example?token=x", "http://remote.example#fragment", "http://"])
+def test_diagnostics_rejects_invalid_server_urls(monkeypatch, url):
+    monkeypatch.setenv("LOG_MANAGER_URL_MAIN", url)
     monkeypatch.setenv("LOG_MANAGER_READ_KEY_MAIN", "secret")
-    with pytest.raises(ValueError, match="HTTPS"):
+    with pytest.raises(ValueError, match="valid configured"):
         api_client._telemetry_get("/telemetry/nodes")
 
 
-def test_diagnostics_sends_read_key_without_redirects(monkeypatch):
-    monkeypatch.setenv("LOG_MANAGER_URL_MAIN", "https://remote.example")
+@pytest.mark.parametrize("url", ["http://remote.example:8501", "https://remote.example"])
+def test_diagnostics_sends_read_key_without_redirects(monkeypatch, url):
+    monkeypatch.setenv("LOG_MANAGER_URL_MAIN", url)
     monkeypatch.setenv("LOG_MANAGER_READ_KEY_MAIN", "secret")
     calls = []
     monkeypatch.setattr(api_client, "_request_json", lambda *args, **kwargs: calls.append(kwargs) or {})

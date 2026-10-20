@@ -87,8 +87,8 @@ def _telemetry_get(path, **params):
         raise ValueError("Configure LOG_MANAGER_URL_MAIN/TEST and LOG_MANAGER_READ_KEY_MAIN/TEST")
     from urllib.parse import urlsplit
     parsed = urlsplit(url)
-    if (parsed.scheme != "https" and not (parsed.scheme == "http" and parsed.hostname in ("localhost", "127.0.0.1", "::1"))) or parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError("Diagnostics requires HTTPS or loopback HTTP")
+    if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("Diagnostics requires a valid configured HTTP or HTTPS server URL")
     return _request_json("GET", url+path, params={"environment": suffix, **params},
                          headers={"X-API-Key": key}, timeout=10, allow_redirects=False)
 
