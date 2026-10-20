@@ -1,7 +1,7 @@
 import customtkinter as ctk
 from tkinter import messagebox
 
-from services.api_client import drain_node, get_node_detail, get_nodes, resume_node
+from services.api_client import drain_node, get_node_detail, get_nodes_with_telemetry, resume_node
 from ui.background import BackgroundTaskMixin, run_detached
 from ui.job_utils import cell, safe_text
 
@@ -98,7 +98,7 @@ class NodesFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
     def fetch_and_render(self):
         self.run_background(
-            task=get_nodes,
+            task=get_nodes_with_telemetry,
             on_start=self._begin_refresh,
             on_success=self._set_nodes,
             on_error=lambda exc: self._show_error(f"Error fetching nodes: {exc}"),
@@ -140,7 +140,8 @@ class NodesFrame(BackgroundTaskMixin, ctk.CTkFrame):
             f"{cell(node.get('state'), 15)} "
             f"{cell(node.get('cpu', node.get('cpus')), 14)} "
             f"{cell(node.get('mem', node.get('memory')), 12)} "
-            f"{cell(node.get('gpu', node.get('gpus')), 18)}\n\n"
+            f"{cell(node.get('gpu', node.get('gpus')), 18)} "
+            f"{safe_text(node.get('diagnostics'))} {safe_text(node.get('last_sample'), '')}\n\n"
         )
 
     def filter_by_state(self, state):

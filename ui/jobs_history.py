@@ -92,6 +92,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.textbox.tag_config("vessl_default", foreground="#9966cc")
 
         self.textbox.bind("<Double-Button-1>", self._on_double_click)
+        self.textbox.bind("<Button-3>", self._on_diagnostics_click)
 
     def set_range(self, days):
         set_recent_range(self.start_entry, self.end_entry, days)
@@ -278,6 +279,13 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
             "Only COMPLETED or FAILED jobs have logs.",
         )
 
+    def _on_diagnostics_click(self, event):
+        line = int(self.textbox.index(f"@{event.x},{event.y}").split(".")[0])
+        job = self._job_line_map.get(line)
+        if job:
+            from ui.diagnostics import show_job_diagnostics
+            show_job_diagnostics(self, job)
+
     def _show_message_popup(self, title, message):
         popup = ctk.CTkToplevel(self)
         popup.title(title)
@@ -296,6 +304,8 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         popup = ctk.CTkToplevel(self)
         popup.title(f"Job Log: {job_id}")
         popup.geometry("900x600")
+        from ui.diagnostics import show_job_diagnostics
+        ctk.CTkButton(popup, text="Execution diagnostics", command=lambda: show_job_diagnostics(popup, job)).pack(padx=10, pady=5)
         popup.attributes("-topmost", True)
         popup.after(300, lambda: popup.attributes("-topmost", False))
 

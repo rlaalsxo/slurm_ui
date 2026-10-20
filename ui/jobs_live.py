@@ -81,6 +81,8 @@ class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
     def display_jobs(self, jobs):
         jobs = sorted(jobs, key=self._state_priority)
+        self._diagnostic_jobs = {}
+        self.textbox.bind("<Button-3>", self._show_diagnostics)
 
         self.textbox.delete("1.0", "end")
         header = (
@@ -91,7 +93,16 @@ class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.textbox.insert("end", "-" * 130 + "\n", "default")
 
         for job in jobs:
+            line = int(self.textbox.index("end-1c").split(".")[0])
+            self._diagnostic_jobs[line] = job
             self.textbox.insert("end", self._format_job_line(job), self._get_state_tag(job))
+
+    def _show_diagnostics(self, event):
+        line = int(self.textbox.index(f"@{event.x},{event.y}").split(".")[0])
+        job = self._diagnostic_jobs.get(line)
+        if job:
+            from ui.diagnostics import show_job_diagnostics
+            show_job_diagnostics(self, job)
 
     def _state_priority(self, job):
         priorities = {"R": 1, "RUNNING": 1, "PD": 2, "PENDING": 2}

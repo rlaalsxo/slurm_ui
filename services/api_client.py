@@ -79,6 +79,57 @@ def get_nodes():
     return _request_json("GET", _slurm_url("/slurm/nodes"), timeout=5)
 
 
+def _telemetry_get(path, **params):
+    suffix = get_current_env()
+    url = os.getenv(f"LOG_MANAGER_URL_{suffix}", "").rstrip("/")
+    key = os.getenv(f"LOG_MANAGER_READ_KEY_{suffix}", "")
+    if not url or not key:
+        raise ValueError("Configure LOG_MANAGER_URL_MAIN/TEST and LOG_MANAGER_READ_KEY_MAIN/TEST")
+    from urllib.parse import urlsplit
+    parsed = urlsplit(url)
+    if (parsed.scheme != "https" and not (parsed.scheme == "http" and parsed.hostname in ("localhost", "127.0.0.1", "::1"))) or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("Diagnostics requires HTTPS or loopback HTTP")
+    return _request_json("GET", url+path, params={"environment": suffix, **params},
+                         headers={"X-API-Key": key}, timeout=10, allow_redirects=False)
+
+
+def get_nodes_with_telemetry():
+    nodes = get_nodes()
+    try:
+        samples = _telemetry_get("/telemetry/nodes")["nodes"]
+        by_node = {}
+        for sample in samples:
+            existing = by_node.get(sample["node"])
+            if existing is None or sample["source"] == "host":
+                by_node[sample["node"]] = sample
+        for node in nodes:
+            sample = by_node.get(node["name"])
+            if not sample:
+                node["diagnostics"] = "No samples"
+                continue
+            temperatures, warnings = [], []
+            for device in sample.get("devices", []):
+                metrics = device.get("metrics", {})
+                temp = metrics.get("temperature_c")
+                if temp is not None:
+                    temperatures.append(f"{device['uuid']}={temp:.1f}C")
+                limit = metrics.get("temperature_limit_c")
+                if metrics.get("thermal_throttle") or (temp is not None and limit is not None and temp >= limit):
+                    warnings.append("THERMAL WARNING")
+            node["diagnostics"] = ("STALE " if sample["stale"] else "") + ", ".join(temperatures + warnings)
+            node["last_sample"] = sample["timestamp"]
+    except (requests.RequestException, ValueError, KeyError):
+        for node in nodes:
+            node["diagnostics"] = "Diagnostics unavailable"
+    return nodes
+
+
+def get_job_diagnostics(job):
+    from urllib.parse import quote
+    job_id = job.get("internal_job_id") or job.get("job_id")
+    return _telemetry_get(f"/telemetry/jobs/{quote(str(job_id), safe='')}/attempts", executor_job_id=str(job.get("job_id")))
+
+
 def get_queue():
     return _request_json("GET", _slurm_url("/slurm/queue"), timeout=5)
 
