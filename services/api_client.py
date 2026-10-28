@@ -30,6 +30,10 @@ URL_MAIN = os.getenv("SLURM_CONTROLLER_URL_MAIN", "http://127.0.0.1:8000")
 URL_TEST = os.getenv("SLURM_CONTROLLER_URL_TEST", "http://127.0.0.1:8001")
 VERIFY_PRESIGNED_URL = os.getenv("VERIFY_PRESIGNED_URL", "false").lower() in ("1", "true", "yes")
 
+# job 이력 조회 타임아웃(초). 다른 호출(nodes/queue 5초, job-stats 15초)보다 긴 이유는
+# 조회 범위를 사용자가 정하고("All" = 365일) 응답이 페이지 없이 한 번에 오기 때문이다.
+JOB_HISTORY_TIMEOUT_SECONDS = int(os.getenv("JOB_HISTORY_TIMEOUT_SECONDS", "60"))
+
 # Curieus 서버 URL (로그 조회용)
 SERVER_URL_MAIN = os.getenv("SERVER_URL_MAIN", "")
 SERVER_URL_TEST = os.getenv("SERVER_URL_TEST", "")
@@ -151,7 +155,10 @@ def get_jobs(start=None, end=None):
         "GET",
         _slurm_url("/slurm/jobs"),
         params={"start": start, "end": end},
-        timeout=10,
+        # 조회 범위를 사용자가 정하므로("All" = 365일) 이 호출이 가장 무겁다. 응답은
+        # 페이지 없이 통째로 오기 때문에 넓은 범위에서는 10초로 부족했다(실측: 타임아웃).
+        # connect/read 공용 값이라 서버가 죽어 있을 때 그만큼 더 기다리는 건 감수한다.
+        timeout=JOB_HISTORY_TIMEOUT_SECONDS,
     )
 
 
