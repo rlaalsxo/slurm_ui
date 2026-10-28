@@ -6,15 +6,19 @@ from ui.date_utils import read_date_range, set_recent_range
 from ui.job_utils import (
     ALL_ACCOUNTS,
     ALL_MODELS,
+    ALL_SERVICES,
+    SERVICE_CURIEUS,
+    SERVICE_LAIDD,
     cell,
     extract_model,
     format_seconds,
     is_completed,
     is_failed,
     job_elapsed_seconds,
+    matches_service,
     normalized_state,
     safe_text,
-    source_label,
+    service_label,
 )
 
 
@@ -75,6 +79,19 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         )
         self.account_filter_menu.grid(row=1, column=3, padx=5, pady=5, sticky="w")
         self._bind_account_filter_wheel()
+
+        # 컨트롤러를 Curieus 와 LAIDD 가 함께 쓴다. QOS 로 가른 서비스 필터(계정 필터처럼 목록이 늘지 않는 고정 값).
+        self.service_filter_label = ctk.CTkLabel(control_frame, text="Service:")
+        self.service_filter_label.grid(row=1, column=4, padx=5, pady=5, sticky="e")
+        self.service_filter_var = ctk.StringVar(value=ALL_SERVICES)
+        self.service_filter_menu = ctk.CTkOptionMenu(
+            control_frame,
+            values=[ALL_SERVICES, SERVICE_LAIDD, SERVICE_CURIEUS],
+            variable=self.service_filter_var,
+            width=110,
+            command=lambda _: self.display_history(),
+        )
+        self.service_filter_menu.grid(row=1, column=5, padx=5, pady=5, sticky="w")
 
         self.textbox = ctk.CTkTextbox(
             self,
@@ -187,10 +204,12 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
     def _get_filtered_jobs(self):
         selected_model = self.model_filter_var.get()
         selected_account = self.account_filter_var.get()
+        selected_service = self.service_filter_var.get()
         return [
             job for job in self._jobs_cache
             if (selected_model == ALL_MODELS or extract_model(job.get("job_name")) == selected_model)
             and (selected_account == ALL_ACCOUNTS or safe_text(job.get("account"), "unknown") == selected_account)
+            and matches_service(job, selected_service)
         ]
 
     def display_history(self):
@@ -211,6 +230,8 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
             active_filters.append(f"Model={self.model_filter_var.get()}")
         if self.account_filter_var.get() != ALL_ACCOUNTS:
             active_filters.append(f"Account={self.account_filter_var.get()}")
+        if self.service_filter_var.get() != ALL_SERVICES:
+            active_filters.append(f"Service={self.service_filter_var.get()}")
         if active_filters:
             self.textbox.insert(
                 "end",
@@ -229,7 +250,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
     def _format_job_line(self, job):
         return (
-            f"{source_label(job.get('source')):8} "
+            f"{service_label(job):8} "
             f"{cell(job.get('job_id'), 10)} "
             f"{cell(job.get('job_name'), 20)} "
             f"{cell(job.get('user'), 10)} "
@@ -343,6 +364,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self._account_filter_values = [ALL_ACCOUNTS]
         self.account_filter_menu.configure(values=[ALL_ACCOUNTS])
         self.account_filter_var.set(ALL_ACCOUNTS)
+        self.service_filter_var.set(ALL_SERVICES)
         self.textbox.insert(
             "end",
             "Job History tab has been reset.\n"

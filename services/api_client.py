@@ -4,6 +4,8 @@ import os
 import sys
 from dotenv import load_dotenv
 
+from services.laidd import is_laidd_job
+
 # ==========================
 # 환경 설정 로드 (PyInstaller 대응)
 # ==========================
@@ -79,16 +81,21 @@ def get_nodes():
     return _request_json("GET", _slurm_url("/slurm/nodes"), timeout=5)
 
 
+def _require_plain_http_url(url, purpose):
+    """키를 실어 보낼 주소의 모양을 확인한다 — 사용자 정보·쿼리·조각이 붙은 주소는 거절한다."""
+    from urllib.parse import urlsplit
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError(f"{purpose} requires a valid configured HTTP or HTTPS server URL")
+
+
 def _telemetry_get(path, **params):
     suffix = get_current_env()
     url = os.getenv(f"LOG_MANAGER_URL_{suffix}", "").rstrip("/")
     key = os.getenv(f"LOG_MANAGER_READ_KEY_{suffix}", "")
     if not url or not key:
         raise ValueError("Configure LOG_MANAGER_URL_MAIN/TEST and LOG_MANAGER_READ_KEY_MAIN/TEST")
-    from urllib.parse import urlsplit
-    parsed = urlsplit(url)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError("Diagnostics requires a valid configured HTTP or HTTPS server URL")
+    _require_plain_http_url(url, "Diagnostics")
     return _request_json("GET", url+path, params={"environment": suffix, **params},
                          headers={"X-API-Key": key}, timeout=10, allow_redirects=False)
 
@@ -166,8 +173,34 @@ def get_job_stats(start=None, end=None):
     )
 
 
-def get_job_log(job_id, job=None):
-    """SLURM Job 로그 조회 (Presigned URL 방식)"""
+def _laidd_log_endpoint():
+    """LAIDD 서버 주소와 읽기 전용 토큰. 둘 중 하나라도 비어 있으면 설정 오류다."""
+    suffix = get_current_env()
+    url = os.getenv(f"SERVER_URL_LAIDD_{suffix}", "").rstrip("/")
+    token = os.getenv(f"LAIDD_LOG_TOKEN_{suffix}", "")
+    if not url or not token:
+        raise ValueError("Configure SERVER_URL_LAIDD_MAIN/TEST and LAIDD_LOG_TOKEN_MAIN/TEST in .env")
+    _require_plain_http_url(url, "LAIDD log lookup")
+    return url, token
+
+
+def _presigned_log_url(job_id, job):
+    """로그를 받을 presigned URL. LAIDD 잡은 LAIDD 서버에, 나머지는 Curieus 서버에 묻는다.
+
+    두 서버가 같은 계약(`GET /slurm/logs/{executor_job_id}` → `{"url": ...}`)을 쓰므로 이후 단계는 같다.
+    LAIDD 쪽은 사용자 세션이 없는 도구라 `X-API-Key` 로 인증하고, 키가 리다이렉트로 새지 않게 따라가지 않는다.
+    """
+    if is_laidd_job(job):
+        url, token = _laidd_log_endpoint()
+        return _request_json(
+            "GET",
+            f"{url}/slurm/logs/{job_id}",
+            params={"job_id": job.get("internal_job_id")} if job.get("internal_job_id") else {},
+            headers={"X-API-Key": token},
+            timeout=10,
+            allow_redirects=False,
+        )["url"]
+
     url = get_server_url()
     if not url:
         raise ValueError("SERVER_URL not configured in .env")
@@ -179,12 +212,17 @@ def get_job_log(job_id, job=None):
             "model_id": job.get("model_id"),
         }
         params = {key: value for key, value in params.items() if value not in (None, "")}
-    presigned_url = _request_json(
+    return _request_json(
         "GET",
         f"{url}/slurm/logs/{job_id}",
         params=params,
         timeout=10,
     )["url"]
+
+
+def get_job_log(job_id, job=None):
+    """SLURM Job 로그 조회 (Presigned URL 방식)"""
+    presigned_url = _presigned_log_url(job_id, job)
     log_res = _session.get(presigned_url, timeout=30, verify=VERIFY_PRESIGNED_URL)
     log_res.raise_for_status()
     return log_res.text

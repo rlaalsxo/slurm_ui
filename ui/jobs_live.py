@@ -2,7 +2,7 @@ import customtkinter as ctk
 
 from services.api_client import get_queue
 from ui.background import BackgroundTaskMixin
-from ui.job_utils import cell, normalized_state, safe_text, source_label
+from ui.job_utils import cell, normalized_state, safe_text, service_label
 
 
 class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
@@ -111,7 +111,7 @@ class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
     def _format_job_line(self, job):
         state = safe_text(job.get("state"))
         return (
-            f"{source_label(job.get('source')):8} "
+            f"{service_label(job):8} "
             f"{cell(job.get('job_id'), 8)} "
             f"{cell(job.get('partition'), 14)} "
             f"{cell(job.get('name'), 20)} "

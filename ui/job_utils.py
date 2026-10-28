@@ -2,9 +2,14 @@ import datetime
 import re
 from collections import defaultdict
 
+from services.laidd import is_laidd_job
+
 
 ALL_MODELS = "All"
 ALL_ACCOUNTS = "All"
+ALL_SERVICES = "All"
+SERVICE_LAIDD = "LAIDD"
+SERVICE_CURIEUS = "Curieus"
 
 
 def safe_text(value, default="-"):
@@ -19,6 +24,18 @@ def cell(value, width, default="-"):
 
 def source_label(source):
     return "VESSL" if safe_text(source, "slurm").lower() == "vessl" else "SLURM"
+
+
+def service_label(job):
+    """목록 첫 열: LAIDD 잡이면 `LAIDD`, 아니면 기존대로 실행 위치(SLURM/VESSL)."""
+    return SERVICE_LAIDD if is_laidd_job(job) else source_label(job.get("source"))
+
+
+def matches_service(job, selected):
+    """서비스 필터. LAIDD 가 아닌 잡은 모두 Curieus 쪽으로 친다(컨트롤러를 두 서비스가 같이 쓴다)."""
+    if selected == ALL_SERVICES:
+        return True
+    return is_laidd_job(job) == (selected == SERVICE_LAIDD)
 
 
 def normalized_state(state):
