@@ -82,7 +82,8 @@ def test_a_curieus_job_still_asks_the_curieus_server_without_a_token(calls):
     request = calls["json"][0]
     assert request["url"] == "http://curieus.test/slurm/logs/902"
     assert request["params"] == {"user_id": "12", "job_id": "77", "model_id": "boltz"}
-    assert "headers" not in request
+    # LAIDD 토큰은 절대 안 실린다. 컨트롤러 키도 (설정 안 됐거나 다른 호스트라) 비어 있다.
+    assert "X-API-Key" not in request.get("headers", {})
 
 
 def test_a_laidd_job_never_reaches_the_curieus_server(calls):

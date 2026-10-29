@@ -2,6 +2,9 @@ import requests
 import datetime
 import os
 import sys
+import tempfile
+
+import certifi
 from dotenv import load_dotenv
 
 from services.laidd import is_laidd_job
@@ -28,7 +31,8 @@ load_dotenv(ENV_PATH)
 # ==========================
 URL_MAIN = os.getenv("SLURM_CONTROLLER_URL_MAIN", "http://127.0.0.1:8000")
 URL_TEST = os.getenv("SLURM_CONTROLLER_URL_TEST", "http://127.0.0.1:8001")
-VERIFY_PRESIGNED_URL = os.getenv("VERIFY_PRESIGNED_URL", "false").lower() in ("1", "true", "yes")
+# presigned 는 NCP 공인 인증서라 검증이 기본. 사내 프록시 등으로 깨질 때만 false.
+VERIFY_PRESIGNED_URL = os.getenv("VERIFY_PRESIGNED_URL", "true").lower() in ("1", "true", "yes")
 
 # job 이력 조회 타임아웃(초). 다른 호출(nodes/queue 5초, job-stats 15초)보다 긴 이유는
 # 조회 범위를 사용자가 정하고("All" = 365일) 응답이 페이지 없이 한 번에 오기 때문이다.
@@ -37,7 +41,37 @@ JOB_HISTORY_TIMEOUT_SECONDS = int(os.getenv("JOB_HISTORY_TIMEOUT_SECONDS", "60")
 # Curieus 서버 URL (로그 조회용)
 SERVER_URL_MAIN = os.getenv("SERVER_URL_MAIN", "")
 SERVER_URL_TEST = os.getenv("SERVER_URL_TEST", "")
+
+
+def _app_data_dir():
+    # 공용 임시 폴더가 아닌 사용자 전용 폴더: 다른 사용자가 신뢰 목록을 바꿔치기할 수 없다.
+    root = os.getenv("APPDATA") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(root, "CurieusSlurmUI")
+
+
+def ca_bundle():
+    """certifi + 자체 CA 합본 경로. CA 가 없으면 True, 못 읽으면 그 경로(요청마다 명확한 오류, 앱은 뜬다)."""
+    configured = os.getenv("CURIEUS_CA_FILE", "").strip()
+    path = configured or os.path.join(BASE_DIR, "ca.crt")
+    if not os.path.isabs(path):
+        path = os.path.join(BASE_DIR, path)
+    if not os.path.exists(path):
+        return path if configured else True
+    try:
+        with open(certifi.where(), encoding="ascii") as public, open(path, encoding="ascii") as private:
+            bundle = public.read() + "\n" + private.read()
+        os.makedirs(_app_data_dir(), exist_ok=True)
+        fd, target = tempfile.mkstemp(prefix="ca-bundle-", suffix=".pem", dir=_app_data_dir())
+        with os.fdopen(fd, "w", encoding="ascii") as output:
+            output.write(bundle)
+        os.replace(target, os.path.join(_app_data_dir(), "ca-bundle.pem"))
+    except (OSError, UnicodeError):
+        return path
+    return os.path.join(_app_data_dir(), "ca-bundle.pem")
+
+
 _session = requests.Session()
+_session.verify = ca_bundle()
 
 _current_env = "MAIN"  # 기본값: MAIN
 
@@ -78,11 +112,25 @@ def _slurm_url(path):
     return f"{get_base_url()}{path}"
 
 
+def _controller_headers(url=None):
+    """컨트롤러 X-API-Key(SLURM_CONTROLLER_API_KEY_MAIN/TEST). 컨트롤러가 아닌 주소에는 키를 싣지 않는다."""
+    key = os.getenv(f"SLURM_CONTROLLER_API_KEY_{get_current_env()}", "").strip()
+    if not key or (url is not None and not url.startswith(get_base_url())):
+        return {}
+    return {"X-API-Key": key}
+
+
+def _controller_json(method, path, timeout=10, **kwargs):
+    # 키가 리다이렉트로 다른 곳에 새지 않게 따라가지 않는다.
+    return _request_json(method, _slurm_url(path), timeout=timeout, headers=_controller_headers(),
+                         allow_redirects=False, **kwargs)
+
+
 # ==========================
 # API 함수들
 # ==========================
 def get_nodes():
-    return _request_json("GET", _slurm_url("/slurm/nodes"), timeout=5)
+    return _controller_json("GET", "/slurm/nodes", timeout=5)
 
 
 def _require_plain_http_url(url, purpose):
@@ -91,6 +139,15 @@ def _require_plain_http_url(url, purpose):
     parsed = urlsplit(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError(f"{purpose} requires a valid configured HTTP or HTTPS server URL")
+
+
+def telemetry_transport_warning():
+    """원격 http 면 읽기 키가 평문으로 가므로 화면에 띄울 경고 문구, 아니면 빈 문자열."""
+    from urllib.parse import urlsplit
+    parsed = urlsplit(os.getenv(f"LOG_MANAGER_URL_{get_current_env()}", ""))
+    if parsed.scheme == "http" and parsed.hostname not in ("localhost", "127.0.0.1", "::1"):
+        return "INSECURE HTTP (switch LOG_MANAGER_URL to https)"
+    return ""
 
 
 def _telemetry_get(path, **params):
@@ -129,6 +186,9 @@ def get_nodes_with_telemetry():
                     warnings.append("THERMAL WARNING")
             node["diagnostics"] = ("STALE " if sample["stale"] else "") + ", ".join(temperatures + warnings)
             node["last_sample"] = sample["timestamp"]
+            insecure = telemetry_transport_warning()
+            if insecure:
+                node["diagnostics"] = f"{insecure} · {node['diagnostics']}"
     except (requests.RequestException, ValueError, KeyError):
         for node in nodes:
             node["diagnostics"] = "Diagnostics unavailable"
@@ -142,7 +202,7 @@ def get_job_diagnostics(job):
 
 
 def get_queue():
-    return _request_json("GET", _slurm_url("/slurm/queue"), timeout=5)
+    return _controller_json("GET", "/slurm/queue", timeout=5)
 
 
 def get_jobs(start=None, end=None):
@@ -151,9 +211,9 @@ def get_jobs(start=None, end=None):
         start = (now - datetime.timedelta(days=7)).isoformat()
         end = now.isoformat()
 
-    return _request_json(
+    return _controller_json(
         "GET",
-        _slurm_url("/slurm/jobs"),
+        "/slurm/jobs",
         params={"start": start, "end": end},
         # 조회 범위를 사용자가 정하므로("All" = 365일) 이 호출이 가장 무겁다. 응답은
         # 페이지 없이 통째로 오기 때문에 넓은 범위에서는 10초로 부족했다(실측: 타임아웃).
@@ -163,7 +223,7 @@ def get_jobs(start=None, end=None):
 
 
 def get_job_status(job_id):
-    return _request_json("GET", _slurm_url(f"/slurm/status/{job_id}"), timeout=5)
+    return _controller_json("GET", f"/slurm/status/{job_id}", timeout=5)
 
 def get_job_stats(start=None, end=None):
     """모델별 Job 통계 조회"""
@@ -172,9 +232,9 @@ def get_job_stats(start=None, end=None):
         start = (now - datetime.timedelta(days=30)).isoformat()
         end = now.isoformat()
 
-    return _request_json(
+    return _controller_json(
         "GET",
-        _slurm_url("/slurm/job-stats"),
+        "/slurm/job-stats",
         params={"start": start, "end": end},
         timeout=15,
     )
@@ -223,7 +283,9 @@ def _presigned_log_url(job_id, job):
         "GET",
         f"{url}/slurm/logs/{job_id}",
         params=params,
+        headers=_controller_headers(url),
         timeout=10,
+        allow_redirects=False,
     )["url"]
 
 
@@ -236,13 +298,13 @@ def get_job_log(job_id, job=None):
 
 
 def get_node_detail(node_name):
-    return _request_json("GET", _slurm_url(f"/slurm/node/{node_name}"), timeout=5)
+    return _controller_json("GET", f"/slurm/node/{node_name}", timeout=5)
 
 
 def drain_node(node_name):
-    return _request_json("POST", _slurm_url(f"/slurm/node/{node_name}/drain"), timeout=10)
+    return _controller_json("POST", f"/slurm/node/{node_name}/drain", timeout=10)
 
 
 def resume_node(node_name):
-    return _request_json("POST", _slurm_url(f"/slurm/node/{node_name}/resume"), timeout=10)
+    return _controller_json("POST", f"/slurm/node/{node_name}/resume", timeout=10)
 

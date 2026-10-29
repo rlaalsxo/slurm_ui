@@ -128,7 +128,7 @@ class NodesFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
     def display_nodes(self, nodes):
         self.table.delete("1.0", "end")
-        self.table.insert("end", f"{'Node':22} {'State':15} {'CPU':14} {'Mem':12} {'GPU':18}\n", "default")
+        self.table.insert("end", f"{'Node':22} {'State':15} {'CPU':14} {'Mem':12} {'GPU':18} Diagnostics\n", "default")
         self.table.insert("end", "-" * 90 + "\n", "default")
 
         for node in sorted(nodes, key=lambda item: safe_text(item.get("name"), "")):
