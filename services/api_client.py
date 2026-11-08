@@ -28,6 +28,8 @@ load_dotenv(ENV_PATH)
 # ==========================
 URL_MAIN = os.getenv("SLURM_CONTROLLER_URL_MAIN", "http://127.0.0.1:8000")
 URL_TEST = os.getenv("SLURM_CONTROLLER_URL_TEST", "http://127.0.0.1:8001")
+# 컨트롤러 호출자 토큰(컨트롤러 CONTROLLER_API_TOKEN 과 같은 값). .env 의 SLURM_CONTROLLER_TOKEN.
+CONTROLLER_TOKEN = os.getenv("SLURM_CONTROLLER_TOKEN") or None
 VERIFY_PRESIGNED_URL = os.getenv("VERIFY_PRESIGNED_URL", "false").lower() in ("1", "true", "yes")
 
 # job 이력 조회 타임아웃(초). 다른 호출(nodes/queue 5초, job-stats 15초)보다 긴 이유는
@@ -74,15 +76,30 @@ def _request_json(method, url, timeout=10, **kwargs):
     return res.json()
 
 
-def _slurm_url(path):
-    return f"{get_base_url()}{path}"
+def _slurm_request(method, path, **kwargs):
+    """컨트롤러 호출 — 컨트롤러가 CONTROLLER_API_TOKEN 을 켜면 X-Controller-Token 이 필요하다."""
+    headers = dict(kwargs.pop("headers", None) or {})
+    if CONTROLLER_TOKEN:
+        headers["X-Controller-Token"] = CONTROLLER_TOKEN
+    return _request_json(method, f"{get_base_url()}{path}", headers=headers, **kwargs)
+
+
+def _origin(url):
+    from urllib.parse import urlsplit
+    parsed = urlsplit(url)
+    return parsed.scheme.lower(), (parsed.hostname or "").lower(), parsed.port
+
+
+def _is_controller_url(url):
+    """SERVER_URL 이 컨트롤러 자신을 가리키는지(컨트롤러가 /slurm/logs 를 서버로 넘겨 준다)."""
+    return _origin(url) == _origin(get_base_url())
 
 
 # ==========================
 # API 함수들
 # ==========================
 def get_nodes():
-    return _request_json("GET", _slurm_url("/slurm/nodes"), timeout=5)
+    return _slurm_request("GET", "/slurm/nodes", timeout=5)
 
 
 def _require_plain_http_url(url, purpose):
@@ -142,7 +159,7 @@ def get_job_diagnostics(job):
 
 
 def get_queue():
-    return _request_json("GET", _slurm_url("/slurm/queue"), timeout=5)
+    return _slurm_request("GET", "/slurm/queue", timeout=5)
 
 
 def get_jobs(start=None, end=None):
@@ -151,9 +168,9 @@ def get_jobs(start=None, end=None):
         start = (now - datetime.timedelta(days=7)).isoformat()
         end = now.isoformat()
 
-    return _request_json(
+    return _slurm_request(
         "GET",
-        _slurm_url("/slurm/jobs"),
+        "/slurm/jobs",
         params={"start": start, "end": end},
         # 조회 범위를 사용자가 정하므로("All" = 365일) 이 호출이 가장 무겁다. 응답은
         # 페이지 없이 통째로 오기 때문에 넓은 범위에서는 10초로 부족했다(실측: 타임아웃).
@@ -163,7 +180,7 @@ def get_jobs(start=None, end=None):
 
 
 def get_job_status(job_id):
-    return _request_json("GET", _slurm_url(f"/slurm/status/{job_id}"), timeout=5)
+    return _slurm_request("GET", f"/slurm/status/{job_id}", timeout=5)
 
 def get_job_stats(start=None, end=None):
     """모델별 Job 통계 조회"""
@@ -172,9 +189,9 @@ def get_job_stats(start=None, end=None):
         start = (now - datetime.timedelta(days=30)).isoformat()
         end = now.isoformat()
 
-    return _request_json(
+    return _slurm_request(
         "GET",
-        _slurm_url("/slurm/job-stats"),
+        "/slurm/job-stats",
         params={"start": start, "end": end},
         timeout=15,
     )
@@ -219,11 +236,16 @@ def _presigned_log_url(job_id, job):
             "model_id": job.get("model_id"),
         }
         params = {key: value for key, value in params.items() if value not in (None, "")}
+    # SERVER_URL 이 컨트롤러면 토큰이 있어야 401 이 안 난다. 다른 서버로는 토큰을 보내지 않고, 리다이렉트로도 새지 않게 한다.
+    token_kwargs = {}
+    if CONTROLLER_TOKEN and _is_controller_url(url):
+        token_kwargs = {"headers": {"X-Controller-Token": CONTROLLER_TOKEN}, "allow_redirects": False}
     return _request_json(
         "GET",
         f"{url}/slurm/logs/{job_id}",
         params=params,
         timeout=10,
+        **token_kwargs,
     )["url"]
 
 
@@ -236,13 +258,13 @@ def get_job_log(job_id, job=None):
 
 
 def get_node_detail(node_name):
-    return _request_json("GET", _slurm_url(f"/slurm/node/{node_name}"), timeout=5)
+    return _slurm_request("GET", f"/slurm/node/{node_name}", timeout=5)
 
 
 def drain_node(node_name):
-    return _request_json("POST", _slurm_url(f"/slurm/node/{node_name}/drain"), timeout=10)
+    return _slurm_request("POST", f"/slurm/node/{node_name}/drain", timeout=10)
 
 
 def resume_node(node_name):
-    return _request_json("POST", _slurm_url(f"/slurm/node/{node_name}/resume"), timeout=10)
+    return _slurm_request("POST", f"/slurm/node/{node_name}/resume", timeout=10)
 
