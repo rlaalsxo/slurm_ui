@@ -4,18 +4,24 @@ from services.api_client import get_job_log, get_jobs
 from ui.background import BackgroundTaskMixin, run_detached
 from ui.date_utils import read_date_range, set_recent_range
 from ui.job_utils import (
+    ACCOUNT_COLUMN_WIDTH,
     ALL_ACCOUNTS,
     ALL_MODELS,
     ALL_SERVICES,
+    ALL_STATUSES,
     SERVICE_CURIEUS,
     SERVICE_LAIDD,
+    STATUS_FILTER_VALUES,
+    account_display,
     cell,
     extract_model,
     format_seconds,
+    history_line_tag,
     is_completed,
     is_failed,
     job_elapsed_seconds,
     matches_service,
+    matches_status,
     normalized_state,
     safe_text,
     service_label,
@@ -93,6 +99,18 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         )
         self.service_filter_menu.grid(row=1, column=5, padx=5, pady=5, sticky="w")
 
+        self.status_filter_label = ctk.CTkLabel(control_frame, text="Status:")
+        self.status_filter_label.grid(row=1, column=6, padx=5, pady=5, sticky="e")
+        self.status_filter_var = ctk.StringVar(value=ALL_STATUSES)
+        self.status_filter_menu = ctk.CTkOptionMenu(
+            control_frame,
+            values=STATUS_FILTER_VALUES,
+            variable=self.status_filter_var,
+            width=110,
+            command=lambda _: self.display_history(),
+        )
+        self.status_filter_menu.grid(row=1, column=7, padx=5, pady=5, sticky="w")
+
         self.textbox = ctk.CTkTextbox(
             self,
             height=550,
@@ -107,6 +125,10 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.textbox.tag_config("vessl_completed", foreground="#bb86fc")
         self.textbox.tag_config("vessl_failed", foreground="#cf6679")
         self.textbox.tag_config("vessl_default", foreground="#9966cc")
+        self.textbox.tag_config("laidd_completed", foreground="#4dd0e1")
+        self.textbox.tag_config("laidd_failed", foreground="#ff8a65")
+        self.textbox.tag_config("laidd_cancelled", foreground="#ffd180")
+        self.textbox.tag_config("laidd_default", foreground="#80cbc4")
 
         self.textbox.bind("<Double-Button-1>", self._on_double_click)
         self.textbox.bind("<Button-3>", self._on_diagnostics_click)
@@ -146,7 +168,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
     def _update_account_filter_options(self, jobs):
         current_account = self.account_filter_var.get()
-        accounts = sorted({safe_text(job.get("account"), "unknown") for job in jobs})
+        accounts = sorted({account_display(job) for job in jobs})
         values = [ALL_ACCOUNTS] + accounts
 
         self._account_filter_values = values
@@ -205,11 +227,13 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         selected_model = self.model_filter_var.get()
         selected_account = self.account_filter_var.get()
         selected_service = self.service_filter_var.get()
+        selected_status = self.status_filter_var.get()
         return [
             job for job in self._jobs_cache
             if (selected_model == ALL_MODELS or extract_model(job.get("job_name")) == selected_model)
-            and (selected_account == ALL_ACCOUNTS or safe_text(job.get("account"), "unknown") == selected_account)
+            and (selected_account == ALL_ACCOUNTS or account_display(job) == selected_account)
             and matches_service(job, selected_service)
+            and matches_status(job, selected_status)
         ]
 
     def display_history(self):
@@ -219,11 +243,11 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self._job_line_map = {}
 
         header = (
-            f"{'Source':8} {'JobID':10} {'Name':20} {'User':10} {'Account':10} "
+            f"{'Source':8} {'JobID':10} {'Name':20} {'User':10} {'Account':{ACCOUNT_COLUMN_WIDTH}} "
             f"{'State':10} {'Start':19} {'End':19} {'Elapsed':13} {'Node':12}\n"
         )
         self.textbox.insert("end", header, "default")
-        self.textbox.insert("end", "-" * 149 + "\n", "default")
+        self.textbox.insert("end", "-" * (149 + ACCOUNT_COLUMN_WIDTH - 10) + "\n", "default")
 
         active_filters = []
         if self.model_filter_var.get() != ALL_MODELS:
@@ -232,6 +256,8 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
             active_filters.append(f"Account={self.account_filter_var.get()}")
         if self.service_filter_var.get() != ALL_SERVICES:
             active_filters.append(f"Service={self.service_filter_var.get()}")
+        if self.status_filter_var.get() != ALL_STATUSES:
+            active_filters.append(f"Status={self.status_filter_var.get()}")
         if active_filters:
             self.textbox.insert(
                 "end",
@@ -243,7 +269,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         for job in sorted(jobs, key=lambda item: safe_text(item.get("start"), ""), reverse=True):
             line_idx = int(self.textbox.index("end-1c").split(".")[0])
             self._job_line_map[line_idx] = job
-            self.textbox.insert("end", self._format_job_line(job), self._get_state_tag(job))
+            self.textbox.insert("end", self._format_job_line(job), history_line_tag(job))
 
         if not jobs:
             self.textbox.insert("end", "\nNo jobs found for the selected period and model filter.\n", "default")
@@ -254,32 +280,13 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
             f"{cell(job.get('job_id'), 10)} "
             f"{cell(job.get('job_name'), 20)} "
             f"{cell(job.get('user'), 10)} "
-            f"{cell(job.get('account'), 10)} "
+            f"{cell(account_display(job), ACCOUNT_COLUMN_WIDTH)} "
             f"{cell(job.get('state'), 10)} "
             f"{cell(job.get('start'), 19)} "
             f"{cell(job.get('end'), 19)} "
             f"{cell(format_seconds(job_elapsed_seconds(job)), 13)} "
             f"{cell(job.get('node_list'), 12)}\n"
         )
-
-    def _get_state_tag(self, job):
-        state = normalized_state(job.get("state"))
-        source = safe_text(job.get("source"), "slurm").lower()
-
-        if source == "vessl":
-            if is_completed(state):
-                return "vessl_completed"
-            if is_failed(state):
-                return "vessl_failed"
-            return "vessl_default"
-
-        if is_completed(state):
-            return "completed"
-        if is_failed(state):
-            return "failed"
-        if state.startswith("CANCELLED") or state == "CA":
-            return "cancelled"
-        return "default"
 
     def _on_double_click(self, event):
         index = self.textbox.index(f"@{event.x},{event.y}")
@@ -365,6 +372,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.account_filter_menu.configure(values=[ALL_ACCOUNTS])
         self.account_filter_var.set(ALL_ACCOUNTS)
         self.service_filter_var.set(ALL_SERVICES)
+        self.status_filter_var.set(ALL_STATUSES)
         self.textbox.insert(
             "end",
             "Job History tab has been reset.\n"

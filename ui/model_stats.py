@@ -4,6 +4,7 @@ from services.api_client import get_jobs
 from ui.background import BackgroundTaskMixin, run_detached
 from ui.date_utils import read_date_range, set_all_range, set_recent_range
 from ui.job_utils import (
+    ACCOUNT_COLUMN_WIDTH,
     aggregate_model_accounts,
     aggregate_model_stats,
     cell,
@@ -235,11 +236,11 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
         textbox.insert("end", "  (min / max / avg are over COMPLETED jobs)\n\n", "default")
 
         header = (
-            f"{'Account':16} {'Total':8} {'Complete':10} {'Fail':8} {'Cancel':10} "
+            f"{'Account':{ACCOUNT_COLUMN_WIDTH}} {'Total':8} {'Complete':10} {'Fail':8} {'Cancel':10} "
             f"{'Avg':12} {'Min':12} {'Max':12}\n"
         )
         textbox.insert("end", header, "default")
-        textbox.insert("end", "-" * 92 + "\n", "default")
+        textbox.insert("end", "-" * (92 + ACCOUNT_COLUMN_WIDTH - 16) + "\n", "default")
 
         if not rows:
             textbox.insert("end", "\nNo jobs found for this model.\n", "default")
@@ -250,7 +251,7 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
     def _format_account_line(self, row):
         return (
-            f"{cell(row['account'], 16)} "
+            f"{cell(row['account'], ACCOUNT_COLUMN_WIDTH)} "
             f"{row['total']:8} "
             f"{row['completed']:10} "
             f"{row['failed']:8} "

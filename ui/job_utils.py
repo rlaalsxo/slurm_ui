@@ -11,6 +11,18 @@ ALL_SERVICES = "All"
 SERVICE_LAIDD = "LAIDD"
 SERVICE_CURIEUS = "Curieus"
 
+ALL_STATUSES = "All"
+STATUS_COMPLETED = "Completed"
+STATUS_FAILED = "Failed"
+STATUS_CANCELLED = "Cancelled"
+STATUS_OTHER = "Other"  # 실행·대기 중, NODE_FAIL·TIMEOUT 등
+STATUS_FILTER_VALUES = [ALL_STATUSES, STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED, STATUS_OTHER]
+
+# 이메일이 들어가므로 번호만 있던 때보다 넓다.
+ACCOUNT_COLUMN_WIDTH = 28
+ADMIN_ACCOUNT_SUFFIX = "_admin"
+TOOLS_ACCOUNT_PREFIX = "tools_"
+
 
 def safe_text(value, default="-"):
     if value is None or value == "":
@@ -36,6 +48,52 @@ def matches_service(job, selected):
     if selected == ALL_SERVICES:
         return True
     return is_laidd_job(job) == (selected == SERVICE_LAIDD)
+
+
+def account_display(job):
+    """account 칸에 보일 값. 컨트롤러가 붙인 `email` 이 있으면 이메일, 없으면(LAIDD·조회 실패) Slurm account."""
+    account = safe_text(job.get("account"), "unknown")
+    email = safe_text(job.get("email"), "")
+    if not email:
+        return account
+    if account.endswith(ADMIN_ACCOUNT_SUFFIX):
+        return f"{email} (admin)"
+    if account.startswith(TOOLS_ACCOUNT_PREFIX):
+        return f"{email} (tools)"
+    return email
+
+
+def status_category(state):
+    if is_completed(state):
+        return STATUS_COMPLETED
+    if is_failed(state):
+        return STATUS_FAILED
+    if is_cancelled(state):
+        return STATUS_CANCELLED
+    return STATUS_OTHER
+
+
+def matches_status(job, selected):
+    return selected == ALL_STATUSES or status_category(job.get("state")) == selected
+
+
+def history_line_tag(job):
+    """job 이력 한 줄의 색 태그. LAIDD → VESSL → SLURM 순으로 색 계열을 고르고 상태로 밝기를 나눈다."""
+    status = status_category(job.get("state"))
+    if is_laidd_job(job):
+        prefix = "laidd_"
+    elif safe_text(job.get("source"), "slurm").lower() == "vessl":
+        prefix = "vessl_"
+    else:
+        prefix = ""
+    suffix = {
+        STATUS_COMPLETED: "completed",
+        STATUS_FAILED: "failed",
+        STATUS_CANCELLED: "cancelled",
+    }.get(status, "default")
+    if prefix == "vessl_" and suffix == "cancelled":
+        suffix = "default"  # 기존 VESSL 색 계열에는 취소 색이 없다
+    return prefix + suffix
 
 
 def normalized_state(state):
@@ -153,7 +211,7 @@ def aggregate_jobs_by_account(jobs):
     })
 
     for job in jobs:
-        account = safe_text(job.get("account"), "unknown")
+        account = account_display(job)
         state = job.get("state")
         data = accounts[account]
 
@@ -207,7 +265,7 @@ def aggregate_model_accounts(jobs, model):
         if model_key(job.get("job_name")) != model:
             continue
 
-        account = safe_text(job.get("account"), "unknown")
+        account = account_display(job)
         state = job.get("state")
         data = accounts[account]
 

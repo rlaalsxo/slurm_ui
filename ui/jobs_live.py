@@ -2,7 +2,8 @@ import customtkinter as ctk
 
 from services.api_client import get_queue
 from ui.background import BackgroundTaskMixin
-from ui.job_utils import cell, normalized_state, safe_text, service_label
+from services.laidd import is_laidd_job
+from ui.job_utils import ACCOUNT_COLUMN_WIDTH, account_display, cell, normalized_state, safe_text, service_label
 
 
 class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
@@ -43,6 +44,9 @@ class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.textbox.tag_config("default", foreground="#cccccc")
         self.textbox.tag_config("vessl_running", foreground="#bb86fc")
         self.textbox.tag_config("vessl_pending", foreground="#9966cc")
+        self.textbox.tag_config("laidd_running", foreground="#4dd0e1")
+        self.textbox.tag_config("laidd_pending", foreground="#80cbc4")
+        self.textbox.tag_config("laidd_default", foreground="#80cbc4")
 
         self.fetch_and_render()
         self.start_auto_refresh()
@@ -86,11 +90,11 @@ class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
         self.textbox.delete("1.0", "end")
         header = (
-            f"{'SOURCE':8} {'JOBID':8} {'PARTITION':14} {'NAME':20} {'USER':12} {'ACCOUNT':12} "
+            f"{'SOURCE':8} {'JOBID':8} {'PARTITION':14} {'NAME':20} {'USER':12} {'ACCOUNT':{ACCOUNT_COLUMN_WIDTH}} "
             f"{'ST':4} {'TIME':8} {'NODES':6} NODELIST(REASON)\n"
         )
         self.textbox.insert("end", header, "default")
-        self.textbox.insert("end", "-" * 130 + "\n", "default")
+        self.textbox.insert("end", "-" * (130 + ACCOUNT_COLUMN_WIDTH - 12) + "\n", "default")
 
         for job in jobs:
             line = int(self.textbox.index("end-1c").split(".")[0])
@@ -116,7 +120,7 @@ class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
             f"{cell(job.get('partition'), 14)} "
             f"{cell(job.get('name'), 20)} "
             f"{cell(job.get('user'), 12)} "
-            f"{cell(job.get('account'), 12)} "
+            f"{cell(account_display(job), ACCOUNT_COLUMN_WIDTH)} "
             f"{state[:4]:4} "
             f"{cell(job.get('time'), 8)} "
             f"{cell(job.get('nodes'), 6)} "
@@ -126,6 +130,12 @@ class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
     def _get_state_tag(self, job):
         state = normalized_state(job.get("state"))
         source = safe_text(job.get("source"), "slurm").lower()
+        if is_laidd_job(job):
+            if state in ("R", "RUNNING"):
+                return "laidd_running"
+            if state in ("PD", "PENDING"):
+                return "laidd_pending"
+            return "laidd_default"
         if source == "vessl":
             if state in ("R", "RUNNING"):
                 return "vessl_running"
