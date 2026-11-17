@@ -10,13 +10,18 @@ from ui.job_utils import (
     STATUS_COMPLETED,
     STATUS_FAILED,
     STATUS_OTHER,
+    ALL_ACCOUNTS,
+    ALL_EMAILS,
     account_display,
     account_email,
-    account_filter_label,
+    account_filter_values,
     account_id,
     aggregate_jobs_by_account,
     aggregate_model_accounts,
+    email_filter_values,
     history_line_tag,
+    matches_account,
+    matches_email,
     matches_status,
     status_category,
 )
@@ -70,17 +75,41 @@ def test_history_line_tag_keeps_old_colors_and_adds_laidd(job, expected):
     assert history_line_tag(job) == expected
 
 
-@pytest.mark.parametrize(("job", "expected_id", "expected_email", "expected_filter"), [
-    ({"account": "481", "email": "a@x.com"}, "481", "a@x.com", "a@x.com (481)"),
-    ({"account": "3_admin", "email": "b@x.com"}, "3_admin", "b@x.com", "b@x.com (3_admin)"),
-    ({"account": "tools_481", "email": "a@x.com"}, "tools_481", "a@x.com", "a@x.com (tools_481)"),
-    ({"account": "77", "qos": "laidd"}, "77", "-", "77"),
-    ({}, "unknown", "-", "unknown"),
+@pytest.mark.parametrize(("job", "expected_id", "expected_email"), [
+    ({"account": "481", "email": "a@x.com"}, "481", "a@x.com"),
+    ({"account": "3_admin", "email": "b@x.com"}, "3_admin", "b@x.com"),
+    ({"account": "tools_481", "email": "a@x.com"}, "tools_481", "a@x.com"),
+    ({"account": "77", "qos": "laidd"}, "77", "-"),
+    ({}, "unknown", "-"),
 ])
-def test_number_is_shown_next_to_the_email(job, expected_id, expected_email, expected_filter):
-    """이메일만 보이면 번호로 찾기 불편해서(11-17) 번호 칸과 필터 항목에 번호를 같이 보여 준다."""
-    assert (account_id(job), account_email(job), account_filter_label(job)) == (
-        expected_id, expected_email, expected_filter)
+def test_number_is_shown_next_to_the_email(job, expected_id, expected_email):
+    """이메일만 보이면 번호로 찾기 불편해서(11-17) 번호 칸을 따로 보여 준다."""
+    assert (account_id(job), account_email(job)) == (expected_id, expected_email)
+
+
+HISTORY_JOBS = [
+    {"account": "481", "email": "a@x.com"},
+    {"account": "3_admin", "email": "b@x.com"},
+    {"account": "tools_481", "email": "a@x.com"},
+    {"account": "10", "email": "c@x.com"},
+    {"account": "77", "qos": "laidd"},
+    {"account": "481", "email": "a@x.com"},
+]
+
+
+def test_account_and_email_filters_are_separate_lists():
+    """계정 필터는 번호(숫자는 숫자 순), 이메일 필터는 이메일만. 이메일 없는 job 은 이메일 항목을 만들지 않는다."""
+    assert account_filter_values(HISTORY_JOBS) == [ALL_ACCOUNTS, "10", "77", "481", "3_admin", "tools_481"]
+    assert email_filter_values(HISTORY_JOBS) == [ALL_EMAILS, "a@x.com", "b@x.com", "c@x.com"]
+
+
+def test_account_and_email_filters_match_independently():
+    by_account = [job for job in HISTORY_JOBS if matches_account(job, "481")]
+    by_email = [job for job in HISTORY_JOBS if matches_email(job, "a@x.com")]
+    both = [job for job in HISTORY_JOBS if matches_account(job, "tools_481") and matches_email(job, "a@x.com")]
+    assert (len(by_account), len(by_email), len(both)) == (2, 3, 1)
+    assert all(matches_account(job, ALL_ACCOUNTS) and matches_email(job, ALL_EMAILS) for job in HISTORY_JOBS)
+    assert not matches_email({"account": "77"}, "-")
 
 
 def test_account_stats_rows_carry_the_number():

@@ -7,6 +7,7 @@ from ui.job_utils import (
     ACCOUNT_COLUMN_WIDTH,
     ACCOUNT_ID_COLUMN_WIDTH,
     ALL_ACCOUNTS,
+    ALL_EMAILS,
     ALL_MODELS,
     ALL_SERVICES,
     ALL_STATUSES,
@@ -14,21 +15,25 @@ from ui.job_utils import (
     SERVICE_LAIDD,
     STATUS_FILTER_VALUES,
     account_email,
-    account_filter_label,
+    account_filter_values,
     account_id,
     cell,
+    email_filter_values,
     extract_model,
     format_seconds,
     history_line_tag,
     is_completed,
     is_failed,
     job_elapsed_seconds,
+    matches_account,
+    matches_email,
     matches_service,
     matches_status,
     normalized_state,
     safe_text,
     service_label,
 )
+from ui.scroll_option_menu import ScrollableOptionMenu
 
 
 class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
@@ -37,8 +42,6 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self._init_background_tasks()
         self._jobs_cache = []
         self._job_line_map = {}
-        self._model_filter_values = [ALL_MODELS]
-        self._account_filter_values = [ALL_ACCOUNTS]
 
         control_frame = ctk.CTkFrame(self)
         control_frame.pack(fill="x", padx=10, pady=(10, 5))
@@ -63,56 +66,16 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.fetch_button = ctk.CTkButton(control_frame, text="Fetch", width=100, command=self.fetch_history)
         self.fetch_button.grid(row=0, column=7, padx=10, pady=5)
 
-        self.model_label = ctk.CTkLabel(control_frame, text="Model:")
-        self.model_label.grid(row=1, column=0, padx=5, pady=5, sticky="e")
-        self.model_filter_var = ctk.StringVar(value=ALL_MODELS)
-        self.model_filter_menu = ctk.CTkOptionMenu(
-            control_frame,
-            values=[ALL_MODELS],
-            variable=self.model_filter_var,
-            width=180,
-            command=lambda _: self.display_history(),
-        )
-        self.model_filter_menu.grid(row=1, column=1, padx=5, pady=5, sticky="w")
-        self._bind_model_filter_wheel()
-
-        self.account_label = ctk.CTkLabel(control_frame, text="Account:")
-        self.account_label.grid(row=1, column=2, padx=5, pady=5, sticky="e")
-        self.account_filter_var = ctk.StringVar(value=ALL_ACCOUNTS)
-        self.account_filter_menu = ctk.CTkOptionMenu(
-            control_frame,
-            values=[ALL_ACCOUNTS],
-            variable=self.account_filter_var,
-            width=180,
-            command=lambda _: self.display_history(),
-        )
-        self.account_filter_menu.grid(row=1, column=3, padx=5, pady=5, sticky="w")
-        self._bind_account_filter_wheel()
-
+        # 필터는 칸 폭이 날짜 줄과 달라서 따로 프레임에 둔다(grid 열을 같이 쓰면 위 버튼 사이가 벌어진다).
+        filter_frame = ctk.CTkFrame(control_frame, fg_color="transparent")
+        filter_frame.grid(row=1, column=0, columnspan=8, sticky="w")
+        self.model_filter_var, self.model_filter_menu = self._add_filter(filter_frame, "Model:", [ALL_MODELS], 180)
+        self.account_filter_var, self.account_filter_menu = self._add_filter(filter_frame, "Account:", [ALL_ACCOUNTS], 120)
+        self.email_filter_var, self.email_filter_menu = self._add_filter(filter_frame, "Email:", [ALL_EMAILS], 240)
         # 컨트롤러를 Curieus 와 LAIDD 가 함께 쓴다. QOS 로 가른 서비스 필터(계정 필터처럼 목록이 늘지 않는 고정 값).
-        self.service_filter_label = ctk.CTkLabel(control_frame, text="Service:")
-        self.service_filter_label.grid(row=1, column=4, padx=5, pady=5, sticky="e")
-        self.service_filter_var = ctk.StringVar(value=ALL_SERVICES)
-        self.service_filter_menu = ctk.CTkOptionMenu(
-            control_frame,
-            values=[ALL_SERVICES, SERVICE_LAIDD, SERVICE_CURIEUS],
-            variable=self.service_filter_var,
-            width=110,
-            command=lambda _: self.display_history(),
-        )
-        self.service_filter_menu.grid(row=1, column=5, padx=5, pady=5, sticky="w")
-
-        self.status_filter_label = ctk.CTkLabel(control_frame, text="Status:")
-        self.status_filter_label.grid(row=1, column=6, padx=5, pady=5, sticky="e")
-        self.status_filter_var = ctk.StringVar(value=ALL_STATUSES)
-        self.status_filter_menu = ctk.CTkOptionMenu(
-            control_frame,
-            values=STATUS_FILTER_VALUES,
-            variable=self.status_filter_var,
-            width=110,
-            command=lambda _: self.display_history(),
-        )
-        self.status_filter_menu.grid(row=1, column=7, padx=5, pady=5, sticky="w")
+        self.service_filter_var, self.service_filter_menu = self._add_filter(
+            filter_frame, "Service:", [ALL_SERVICES, SERVICE_LAIDD, SERVICE_CURIEUS], 110)
+        self.status_filter_var, self.status_filter_menu = self._add_filter(filter_frame, "Status:", STATUS_FILTER_VALUES, 110)
 
         self.textbox = ctk.CTkTextbox(
             self,
@@ -154,87 +117,42 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
             on_error=lambda exc: self._show_error(f"Error fetching job history: {exc}"),
         )
 
+    def _add_filter(self, parent, label_text, values, width):
+        label = ctk.CTkLabel(parent, text=label_text)
+        label.pack(side="left", padx=(10, 5), pady=5)
+        variable = ctk.StringVar(value=values[0])
+        menu = ScrollableOptionMenu(
+            parent, values=values, variable=variable, width=width, command=lambda _: self.display_history())
+        menu.pack(side="left", padx=(0, 5), pady=5)
+        menu.bind_wheel_cycle(label)
+        return variable, menu
+
     def _set_jobs(self, jobs):
         self._jobs_cache = jobs
-        self._update_model_filter_options(jobs)
-        self._update_account_filter_options(jobs)
-        self.display_history()
-
-    def _update_model_filter_options(self, jobs):
-        current_model = self.model_filter_var.get()
         models = sorted({extract_model(job.get("job_name")) for job in jobs})
-        values = [ALL_MODELS] + models
-
-        self._model_filter_values = values
-        self.model_filter_menu.configure(values=values)
-        self.model_filter_var.set(current_model if current_model in values else ALL_MODELS)
-
-    def _update_account_filter_options(self, jobs):
-        current_account = self.account_filter_var.get()
-        accounts = sorted({account_filter_label(job) for job in jobs})
-        values = [ALL_ACCOUNTS] + accounts
-
-        self._account_filter_values = values
-        self.account_filter_menu.configure(values=values)
-        self.account_filter_var.set(current_account if current_account in values else ALL_ACCOUNTS)
-
-    def _bind_model_filter_wheel(self):
-        self.model_filter_menu.bind("<MouseWheel>", self._on_model_filter_wheel)
-        self.model_filter_menu.bind("<Button-4>", self._on_model_filter_wheel)
-        self.model_filter_menu.bind("<Button-5>", self._on_model_filter_wheel)
-        self.model_label.bind("<MouseWheel>", self._on_model_filter_wheel)
-        self.model_label.bind("<Button-4>", self._on_model_filter_wheel)
-        self.model_label.bind("<Button-5>", self._on_model_filter_wheel)
-
-    def _on_model_filter_wheel(self, event):
-        if len(self._model_filter_values) <= 1:
-            return "break"
-
-        current_model = self.model_filter_var.get()
-        try:
-            index = self._model_filter_values.index(current_model)
-        except ValueError:
-            index = 0
-
-        step = 1 if getattr(event, "num", None) == 5 or getattr(event, "delta", 0) < 0 else -1
-        next_index = (index + step) % len(self._model_filter_values)
-        self.model_filter_var.set(self._model_filter_values[next_index])
+        self._set_filter_values(self.model_filter_menu, self.model_filter_var, [ALL_MODELS] + models)
+        self._set_filter_values(self.account_filter_menu, self.account_filter_var, account_filter_values(jobs))
+        self._set_filter_values(self.email_filter_menu, self.email_filter_var, email_filter_values(jobs))
         self.display_history()
-        return "break"
 
-    def _bind_account_filter_wheel(self):
-        self.account_filter_menu.bind("<MouseWheel>", self._on_account_filter_wheel)
-        self.account_filter_menu.bind("<Button-4>", self._on_account_filter_wheel)
-        self.account_filter_menu.bind("<Button-5>", self._on_account_filter_wheel)
-        self.account_label.bind("<MouseWheel>", self._on_account_filter_wheel)
-        self.account_label.bind("<Button-4>", self._on_account_filter_wheel)
-        self.account_label.bind("<Button-5>", self._on_account_filter_wheel)
-
-    def _on_account_filter_wheel(self, event):
-        if len(self._account_filter_values) <= 1:
-            return "break"
-
-        current_account = self.account_filter_var.get()
-        try:
-            index = self._account_filter_values.index(current_account)
-        except ValueError:
-            index = 0
-
-        step = 1 if getattr(event, "num", None) == 5 or getattr(event, "delta", 0) < 0 else -1
-        next_index = (index + step) % len(self._account_filter_values)
-        self.account_filter_var.set(self._account_filter_values[next_index])
-        self.display_history()
-        return "break"
+    @staticmethod
+    def _set_filter_values(menu, variable, values):
+        """새 기간에도 있는 값이면 선택을 유지하고, 없으면 All 로 돌린다."""
+        current = variable.get()
+        menu.configure(values=values)
+        variable.set(current if current in values else values[0])
 
     def _get_filtered_jobs(self):
         selected_model = self.model_filter_var.get()
         selected_account = self.account_filter_var.get()
+        selected_email = self.email_filter_var.get()
         selected_service = self.service_filter_var.get()
         selected_status = self.status_filter_var.get()
         return [
             job for job in self._jobs_cache
             if (selected_model == ALL_MODELS or extract_model(job.get("job_name")) == selected_model)
-            and (selected_account == ALL_ACCOUNTS or account_filter_label(job) == selected_account)
+            and matches_account(job, selected_account)
+            and matches_email(job, selected_email)
             and matches_service(job, selected_service)
             and matches_status(job, selected_status)
         ]
@@ -257,6 +175,8 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
             active_filters.append(f"Model={self.model_filter_var.get()}")
         if self.account_filter_var.get() != ALL_ACCOUNTS:
             active_filters.append(f"Account={self.account_filter_var.get()}")
+        if self.email_filter_var.get() != ALL_EMAILS:
+            active_filters.append(f"Email={self.email_filter_var.get()}")
         if self.service_filter_var.get() != ALL_SERVICES:
             active_filters.append(f"Service={self.service_filter_var.get()}")
         if self.status_filter_var.get() != ALL_STATUSES:
@@ -369,12 +289,9 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.textbox.delete("1.0", "end")
         self._jobs_cache = []
         self._job_line_map = {}
-        self._model_filter_values = [ALL_MODELS]
-        self.model_filter_menu.configure(values=[ALL_MODELS])
-        self.model_filter_var.set(ALL_MODELS)
-        self._account_filter_values = [ALL_ACCOUNTS]
-        self.account_filter_menu.configure(values=[ALL_ACCOUNTS])
-        self.account_filter_var.set(ALL_ACCOUNTS)
+        self._set_filter_values(self.model_filter_menu, self.model_filter_var, [ALL_MODELS])
+        self._set_filter_values(self.account_filter_menu, self.account_filter_var, [ALL_ACCOUNTS])
+        self._set_filter_values(self.email_filter_menu, self.email_filter_var, [ALL_EMAILS])
         self.service_filter_var.set(ALL_SERVICES)
         self.status_filter_var.set(ALL_STATUSES)
         self.textbox.insert(

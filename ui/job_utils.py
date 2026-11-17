@@ -7,6 +7,7 @@ from services.laidd import is_laidd_job
 
 ALL_MODELS = "All"
 ALL_ACCOUNTS = "All"
+ALL_EMAILS = "All"
 ALL_SERVICES = "All"
 SERVICE_LAIDD = "LAIDD"
 SERVICE_CURIEUS = "Curieus"
@@ -75,10 +76,26 @@ def account_email(job):
     return safe_text(job.get("email"))
 
 
-def account_filter_label(job):
-    """계정 필터 항목: `이메일 (번호)`. 이메일이 없으면 번호만. 이메일 순으로 정렬돼도 번호가 보인다."""
-    email = safe_text(job.get("email"), "")
-    return f"{email} ({account_id(job)})" if email else account_id(job)
+def _account_id_sort_key(account):
+    """숫자 계정은 숫자 순(2 < 10)으로 먼저, `3_admin`·`tools_481` 같은 나머지는 글자 순으로 뒤에."""
+    return (0, int(account), "") if account.isdigit() else (1, 0, account)
+
+
+def account_filter_values(jobs):
+    return [ALL_ACCOUNTS] + sorted({account_id(job) for job in jobs}, key=_account_id_sort_key)
+
+
+def email_filter_values(jobs):
+    """이메일이 없는 job(LAIDD·조회 실패)은 이메일 필터에 항목을 만들지 않는다."""
+    return [ALL_EMAILS] + sorted({job["email"] for job in jobs if safe_text(job.get("email"), "")})
+
+
+def matches_account(job, selected):
+    return selected == ALL_ACCOUNTS or account_id(job) == selected
+
+
+def matches_email(job, selected):
+    return selected == ALL_EMAILS or safe_text(job.get("email"), "") == selected
 
 
 def status_category(state):
