@@ -11,13 +11,20 @@ from ui.scroll_option_menu import VISIBLE_ROWS, ScrollableOptionMenu  # noqa: E4
 VALUES = ["All"] + [f"user{i}@x.com" for i in range(40)]
 
 
-@pytest.fixture
-def menu():
+@pytest.fixture(scope="module")
+def root():
+    # Windows 에서 한 프로세스가 Tk 를 여러 번 만들면 가끔 tk.tcl 을 못 찾아서 모듈당 하나만 만든다.
     try:
-        root = ctk.CTk()
+        window = ctk.CTk()
     except tkinter.TclError as exc:
         pytest.skip(f"no display: {exc}")
-    root.withdraw()
+    window.withdraw()
+    yield window
+    window.destroy()
+
+
+@pytest.fixture
+def menu(root):
     chosen = []
     widget = ScrollableOptionMenu(root, values=VALUES, command=chosen.append)
     widget.pack()
@@ -25,7 +32,6 @@ def menu():
     widget.chosen = chosen
     yield widget
     widget.destroy()
-    root.destroy()
 
 
 def wheel(delta):

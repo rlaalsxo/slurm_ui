@@ -9,6 +9,7 @@ from ui.job_utils import (
     ALL_ACCOUNTS,
     ALL_EMAILS,
     ALL_MODELS,
+    ALL_NODES,
     ALL_SERVICES,
     ALL_STATUSES,
     SERVICE_CURIEUS,
@@ -27,8 +28,10 @@ from ui.job_utils import (
     job_elapsed_seconds,
     matches_account,
     matches_email,
+    matches_node,
     matches_service,
     matches_status,
+    node_filter_values,
     normalized_state,
     safe_text,
     service_label,
@@ -72,6 +75,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self.model_filter_var, self.model_filter_menu = self._add_filter(filter_frame, "Model:", [ALL_MODELS], 180)
         self.account_filter_var, self.account_filter_menu = self._add_filter(filter_frame, "Account:", [ALL_ACCOUNTS], 120)
         self.email_filter_var, self.email_filter_menu = self._add_filter(filter_frame, "Email:", [ALL_EMAILS], 240)
+        self.node_filter_var, self.node_filter_menu = self._add_filter(filter_frame, "Node:", [ALL_NODES], 140)
         # 컨트롤러를 Curieus 와 LAIDD 가 함께 쓴다. QOS 로 가른 서비스 필터(계정 필터처럼 목록이 늘지 않는 고정 값).
         self.service_filter_var, self.service_filter_menu = self._add_filter(
             filter_frame, "Service:", [ALL_SERVICES, SERVICE_LAIDD, SERVICE_CURIEUS], 110)
@@ -133,6 +137,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self._set_filter_values(self.model_filter_menu, self.model_filter_var, [ALL_MODELS] + models)
         self._set_filter_values(self.account_filter_menu, self.account_filter_var, account_filter_values(jobs))
         self._set_filter_values(self.email_filter_menu, self.email_filter_var, email_filter_values(jobs))
+        self._set_filter_values(self.node_filter_menu, self.node_filter_var, node_filter_values(jobs))
         self.display_history()
 
     @staticmethod
@@ -146,6 +151,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         selected_model = self.model_filter_var.get()
         selected_account = self.account_filter_var.get()
         selected_email = self.email_filter_var.get()
+        selected_node = self.node_filter_var.get()
         selected_service = self.service_filter_var.get()
         selected_status = self.status_filter_var.get()
         return [
@@ -153,6 +159,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
             if (selected_model == ALL_MODELS or extract_model(job.get("job_name")) == selected_model)
             and matches_account(job, selected_account)
             and matches_email(job, selected_email)
+            and matches_node(job, selected_node)
             and matches_service(job, selected_service)
             and matches_status(job, selected_status)
         ]
@@ -177,6 +184,8 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
             active_filters.append(f"Account={self.account_filter_var.get()}")
         if self.email_filter_var.get() != ALL_EMAILS:
             active_filters.append(f"Email={self.email_filter_var.get()}")
+        if self.node_filter_var.get() != ALL_NODES:
+            active_filters.append(f"Node={self.node_filter_var.get()}")
         if self.service_filter_var.get() != ALL_SERVICES:
             active_filters.append(f"Service={self.service_filter_var.get()}")
         if self.status_filter_var.get() != ALL_STATUSES:
@@ -292,6 +301,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self._set_filter_values(self.model_filter_menu, self.model_filter_var, [ALL_MODELS])
         self._set_filter_values(self.account_filter_menu, self.account_filter_var, [ALL_ACCOUNTS])
         self._set_filter_values(self.email_filter_menu, self.email_filter_var, [ALL_EMAILS])
+        self._set_filter_values(self.node_filter_menu, self.node_filter_var, [ALL_NODES])
         self.service_filter_var.set(ALL_SERVICES)
         self.status_filter_var.set(ALL_STATUSES)
         self.textbox.insert(

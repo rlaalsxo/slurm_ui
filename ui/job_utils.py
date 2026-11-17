@@ -8,6 +8,7 @@ from services.laidd import is_laidd_job
 ALL_MODELS = "All"
 ALL_ACCOUNTS = "All"
 ALL_EMAILS = "All"
+ALL_NODES = "All"
 ALL_SERVICES = "All"
 SERVICE_LAIDD = "LAIDD"
 SERVICE_CURIEUS = "Curieus"
@@ -88,6 +89,21 @@ def account_filter_values(jobs):
 def email_filter_values(jobs):
     """이메일이 없는 job(LAIDD·조회 실패)은 이메일 필터에 항목을 만들지 않는다."""
     return [ALL_EMAILS] + sorted({job["email"] for job in jobs if safe_text(job.get("email"), "")})
+
+
+def _natural_sort_key(text):
+    """`connects-2` 가 `connects-11` 앞에 오도록 숫자 부분은 숫자로 비교한다."""
+    return [(0, int(part), "") if part.isdigit() else (1, 0, part) for part in re.split(r"(\d+)", text)]
+
+
+def node_filter_values(jobs):
+    """노드가 없는 job(대기 중 취소 등)은 노드 필터에 항목을 만들지 않는다."""
+    nodes = {job["node_list"] for job in jobs if safe_text(job.get("node_list"), "")}
+    return [ALL_NODES] + sorted(nodes, key=_natural_sort_key)
+
+
+def matches_node(job, selected):
+    return selected == ALL_NODES or safe_text(job.get("node_list"), "") == selected
 
 
 def matches_account(job, selected):

@@ -12,6 +12,7 @@ from ui.job_utils import (
     STATUS_OTHER,
     ALL_ACCOUNTS,
     ALL_EMAILS,
+    ALL_NODES,
     account_display,
     account_email,
     account_filter_values,
@@ -20,8 +21,10 @@ from ui.job_utils import (
     aggregate_model_accounts,
     email_filter_values,
     history_line_tag,
+    node_filter_values,
     matches_account,
     matches_email,
+    matches_node,
     matches_status,
     status_category,
 )
@@ -137,3 +140,13 @@ def test_account_stats_group_by_email_and_keep_admin_separate():
 
     model_rows = {row["account"]: row for row in aggregate_model_accounts(jobs, "boltz")}
     assert set(model_rows) == {"a@x.com", "a@x.com (admin)", "77"}
+
+
+def test_node_filter_sorts_numbers_naturally_and_skips_jobs_without_a_node():
+    jobs = [
+        {"node_list": "connects-11"}, {"node_list": "connects-2"}, {"node_list": "connects-11"},
+        {"node_list": ""}, {}, {"node_list": "connects-3"},
+    ]
+    assert node_filter_values(jobs) == [ALL_NODES, "connects-2", "connects-3", "connects-11"]
+    assert [matches_node(job, "connects-11") for job in jobs] == [True, False, True, False, False, False]
+    assert all(matches_node(job, ALL_NODES) for job in jobs)
