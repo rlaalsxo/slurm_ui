@@ -20,6 +20,8 @@ STATUS_FILTER_VALUES = [ALL_STATUSES, STATUS_COMPLETED, STATUS_FAILED, STATUS_CA
 
 # 이메일이 들어가므로 번호만 있던 때보다 넓다.
 ACCOUNT_COLUMN_WIDTH = 28
+# Slurm account 그대로(`481`, `3_admin`, `tools_481`) 보여 주는 칸.
+ACCOUNT_ID_COLUMN_WIDTH = 12
 ADMIN_ACCOUNT_SUFFIX = "_admin"
 TOOLS_ACCOUNT_PREFIX = "tools_"
 
@@ -61,6 +63,22 @@ def account_display(job):
     if account.startswith(TOOLS_ACCOUNT_PREFIX):
         return f"{email} (tools)"
     return email
+
+
+def account_id(job):
+    """Slurm account 그대로 — 이메일 옆 번호 칸."""
+    return safe_text(job.get("account"), "unknown")
+
+
+def account_email(job):
+    """이메일 칸. 번호 칸이 따로 있어 관리자·도구 표시는 붙이지 않는다. 없으면 `-`."""
+    return safe_text(job.get("email"))
+
+
+def account_filter_label(job):
+    """계정 필터 항목: `이메일 (번호)`. 이메일이 없으면 번호만. 이메일 순으로 정렬돼도 번호가 보인다."""
+    email = safe_text(job.get("email"), "")
+    return f"{email} ({account_id(job)})" if email else account_id(job)
 
 
 def status_category(state):
@@ -214,6 +232,7 @@ def aggregate_jobs_by_account(jobs):
         account = account_display(job)
         state = job.get("state")
         data = accounts[account]
+        data["account_id"] = account_id(job)
 
         data["total"] += 1
         if is_completed(state):
@@ -234,6 +253,7 @@ def aggregate_jobs_by_account(jobs):
     return [
         {
             "account": name,
+            "account_id": data["account_id"],
             "total": data["total"],
             "completed": data["completed"],
             "failed": data["failed"],
@@ -268,6 +288,7 @@ def aggregate_model_accounts(jobs, model):
         account = account_display(job)
         state = job.get("state")
         data = accounts[account]
+        data["account_id"] = account_id(job)
 
         data["total"] += 1
         if is_completed(state):
@@ -285,6 +306,7 @@ def aggregate_model_accounts(jobs, model):
         times = data["completed_seconds"]
         result.append({
             "account": account,
+            "account_id": data["account_id"],
             "total": data["total"],
             "completed": data["completed"],
             "failed": data["failed"],

@@ -5,6 +5,7 @@ from ui.background import BackgroundTaskMixin, run_detached
 from ui.date_utils import read_date_range, set_recent_range
 from ui.job_utils import (
     ACCOUNT_COLUMN_WIDTH,
+    ACCOUNT_ID_COLUMN_WIDTH,
     ALL_ACCOUNTS,
     ALL_MODELS,
     ALL_SERVICES,
@@ -12,7 +13,9 @@ from ui.job_utils import (
     SERVICE_CURIEUS,
     SERVICE_LAIDD,
     STATUS_FILTER_VALUES,
-    account_display,
+    account_email,
+    account_filter_label,
+    account_id,
     cell,
     extract_model,
     format_seconds,
@@ -168,7 +171,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
     def _update_account_filter_options(self, jobs):
         current_account = self.account_filter_var.get()
-        accounts = sorted({account_display(job) for job in jobs})
+        accounts = sorted({account_filter_label(job) for job in jobs})
         values = [ALL_ACCOUNTS] + accounts
 
         self._account_filter_values = values
@@ -231,7 +234,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         return [
             job for job in self._jobs_cache
             if (selected_model == ALL_MODELS or extract_model(job.get("job_name")) == selected_model)
-            and (selected_account == ALL_ACCOUNTS or account_display(job) == selected_account)
+            and (selected_account == ALL_ACCOUNTS or account_filter_label(job) == selected_account)
             and matches_service(job, selected_service)
             and matches_status(job, selected_status)
         ]
@@ -243,11 +246,11 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self._job_line_map = {}
 
         header = (
-            f"{'Source':8} {'JobID':10} {'Name':20} {'User':10} {'Account':{ACCOUNT_COLUMN_WIDTH}} "
-            f"{'State':10} {'Start':19} {'End':19} {'Elapsed':13} {'Node':12}\n"
+            f"{'Source':8} {'JobID':10} {'Name':20} {'User':10} {'Account':{ACCOUNT_ID_COLUMN_WIDTH}} "
+            f"{'Email':{ACCOUNT_COLUMN_WIDTH}} {'State':10} {'Start':19} {'End':19} {'Elapsed':13} {'Node':12}\n"
         )
         self.textbox.insert("end", header, "default")
-        self.textbox.insert("end", "-" * (149 + ACCOUNT_COLUMN_WIDTH - 10) + "\n", "default")
+        self.textbox.insert("end", "-" * (150 + ACCOUNT_ID_COLUMN_WIDTH + ACCOUNT_COLUMN_WIDTH - 10) + "\n", "default")
 
         active_filters = []
         if self.model_filter_var.get() != ALL_MODELS:
@@ -280,7 +283,8 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
             f"{cell(job.get('job_id'), 10)} "
             f"{cell(job.get('job_name'), 20)} "
             f"{cell(job.get('user'), 10)} "
-            f"{cell(account_display(job), ACCOUNT_COLUMN_WIDTH)} "
+            f"{cell(account_id(job), ACCOUNT_ID_COLUMN_WIDTH)} "
+            f"{cell(account_email(job), ACCOUNT_COLUMN_WIDTH)} "
             f"{cell(job.get('state'), 10)} "
             f"{cell(job.get('start'), 19)} "
             f"{cell(job.get('end'), 19)} "

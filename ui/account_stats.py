@@ -3,7 +3,14 @@ import customtkinter as ctk
 from services.api_client import get_jobs
 from ui.background import BackgroundTaskMixin
 from ui.date_utils import read_date_range, set_all_range, set_recent_range
-from ui.job_utils import ACCOUNT_COLUMN_WIDTH, aggregate_jobs_by_account, cell, format_seconds, success_tag
+from ui.job_utils import (
+    ACCOUNT_COLUMN_WIDTH,
+    ACCOUNT_ID_COLUMN_WIDTH,
+    aggregate_jobs_by_account,
+    cell,
+    format_seconds,
+    success_tag,
+)
 
 
 class AccountStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
@@ -116,11 +123,11 @@ class AccountStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
         self._account_line_map = {}
 
         header = (
-            f"{'Account':<{ACCOUNT_COLUMN_WIDTH}} {'Total':>8} {'Complete':>10} {'Fail':>8} "
-            f"{'Cancel':>10} {'Total Time':>14}\n"
+            f"{'Account':<{ACCOUNT_ID_COLUMN_WIDTH}} {'Email':<{ACCOUNT_COLUMN_WIDTH}} {'Total':>8} {'Complete':>10} "
+            f"{'Fail':>8} {'Cancel':>10} {'Total Time':>14}\n"
         )
         self.textbox.insert("end", header, "default")
-        self.textbox.insert("end", "-" * (70 + ACCOUNT_COLUMN_WIDTH - 15) + "\n", "default")
+        self.textbox.insert("end", "-" * (71 + ACCOUNT_ID_COLUMN_WIDTH + ACCOUNT_COLUMN_WIDTH - 15) + "\n", "default")
         self.textbox.insert("end", "  (Click an account row to see details)\n\n", "info")
 
         for account in sorted_accounts:
@@ -137,6 +144,7 @@ class AccountStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
     def _format_account_line(self, account):
         return (
+            f"{cell(account['account_id'], ACCOUNT_ID_COLUMN_WIDTH)} "
             f"{cell(account['account'], ACCOUNT_COLUMN_WIDTH)} "
             f"{account['total']:>8} "
             f"{account['completed']:>10} "
@@ -171,7 +179,9 @@ class AccountStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
         textbox.tag_config("default", foreground="#cccccc")
         textbox.tag_config("warn", foreground="#ffcc00")
 
-        textbox.insert("end", f"  Account: {account_name}\n", "title")
+        account_id = account["account_id"]
+        suffix = f" ({account_id})" if account_id != account_name else ""
+        textbox.insert("end", f"  Account: {account_name}{suffix}\n", "title")
         textbox.insert("end", f"  Total Jobs: {account['total']}    ", "default")
         textbox.insert("end", f"Completed: {account['completed']}    ", "good")
         textbox.insert("end", f"Failed: {account['failed']}    ", "warn")

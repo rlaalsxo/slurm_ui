@@ -3,7 +3,16 @@ import customtkinter as ctk
 from services.api_client import get_queue
 from ui.background import BackgroundTaskMixin
 from services.laidd import is_laidd_job
-from ui.job_utils import ACCOUNT_COLUMN_WIDTH, account_display, cell, normalized_state, safe_text, service_label
+from ui.job_utils import (
+    ACCOUNT_COLUMN_WIDTH,
+    ACCOUNT_ID_COLUMN_WIDTH,
+    account_email,
+    account_id,
+    cell,
+    normalized_state,
+    safe_text,
+    service_label,
+)
 
 
 class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
@@ -90,11 +99,11 @@ class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
         self.textbox.delete("1.0", "end")
         header = (
-            f"{'SOURCE':8} {'JOBID':8} {'PARTITION':14} {'NAME':20} {'USER':12} {'ACCOUNT':{ACCOUNT_COLUMN_WIDTH}} "
-            f"{'ST':4} {'TIME':8} {'NODES':6} NODELIST(REASON)\n"
+            f"{'SOURCE':8} {'JOBID':8} {'PARTITION':14} {'NAME':20} {'USER':12} {'ACCOUNT':{ACCOUNT_ID_COLUMN_WIDTH}} "
+            f"{'EMAIL':{ACCOUNT_COLUMN_WIDTH}} {'ST':4} {'TIME':8} {'NODES':6} NODELIST(REASON)\n"
         )
         self.textbox.insert("end", header, "default")
-        self.textbox.insert("end", "-" * (130 + ACCOUNT_COLUMN_WIDTH - 12) + "\n", "default")
+        self.textbox.insert("end", "-" * (131 + ACCOUNT_ID_COLUMN_WIDTH + ACCOUNT_COLUMN_WIDTH - 12) + "\n", "default")
 
         for job in jobs:
             line = int(self.textbox.index("end-1c").split(".")[0])
@@ -120,7 +129,8 @@ class JobsLiveFrame(BackgroundTaskMixin, ctk.CTkFrame):
             f"{cell(job.get('partition'), 14)} "
             f"{cell(job.get('name'), 20)} "
             f"{cell(job.get('user'), 12)} "
-            f"{cell(account_display(job), ACCOUNT_COLUMN_WIDTH)} "
+            f"{cell(account_id(job), ACCOUNT_ID_COLUMN_WIDTH)} "
+            f"{cell(account_email(job), ACCOUNT_COLUMN_WIDTH)} "
             f"{state[:4]:4} "
             f"{cell(job.get('time'), 8)} "
             f"{cell(job.get('nodes'), 6)} "

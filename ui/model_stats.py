@@ -5,6 +5,7 @@ from ui.background import BackgroundTaskMixin, run_detached
 from ui.date_utils import read_date_range, set_all_range, set_recent_range
 from ui.job_utils import (
     ACCOUNT_COLUMN_WIDTH,
+    ACCOUNT_ID_COLUMN_WIDTH,
     aggregate_model_accounts,
     aggregate_model_stats,
     cell,
@@ -192,7 +193,7 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
     def _show_account_stats_popup(self, model):
         popup = ctk.CTkToplevel(self)
         popup.title(f"Account Stats: {model}")
-        popup.geometry("720x560")
+        popup.geometry("1000x560")
         popup.attributes("-topmost", True)
         popup.after(300, lambda: popup.attributes("-topmost", False))
 
@@ -236,11 +237,11 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
         textbox.insert("end", "  (min / max / avg are over COMPLETED jobs)\n\n", "default")
 
         header = (
-            f"{'Account':{ACCOUNT_COLUMN_WIDTH}} {'Total':8} {'Complete':10} {'Fail':8} {'Cancel':10} "
-            f"{'Avg':12} {'Min':12} {'Max':12}\n"
+            f"{'Account':{ACCOUNT_ID_COLUMN_WIDTH}} {'Email':{ACCOUNT_COLUMN_WIDTH}} {'Total':8} {'Complete':10} "
+            f"{'Fail':8} {'Cancel':10} {'Avg':12} {'Min':12} {'Max':12}\n"
         )
         textbox.insert("end", header, "default")
-        textbox.insert("end", "-" * (92 + ACCOUNT_COLUMN_WIDTH - 16) + "\n", "default")
+        textbox.insert("end", "-" * (93 + ACCOUNT_ID_COLUMN_WIDTH + ACCOUNT_COLUMN_WIDTH - 16) + "\n", "default")
 
         if not rows:
             textbox.insert("end", "\nNo jobs found for this model.\n", "default")
@@ -251,6 +252,7 @@ class ModelStatsFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
     def _format_account_line(self, row):
         return (
+            f"{cell(row['account_id'], ACCOUNT_ID_COLUMN_WIDTH)} "
             f"{cell(row['account'], ACCOUNT_COLUMN_WIDTH)} "
             f"{row['total']:8} "
             f"{row['completed']:10} "
