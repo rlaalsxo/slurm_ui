@@ -6,6 +6,7 @@ from ui.jobs_live import JobsLiveFrame
 from ui.jobs_history import JobsHistoryFrame
 from ui.model_stats import ModelStatsFrame
 from ui.account_stats import AccountStatsFrame
+from ui.health import HealthFrame
 from services import api_client
 
 
@@ -101,6 +102,7 @@ class Dashboard(ctk.CTkFrame):
         self.history_tab = self.tabview.add("Job History")
         self.stats_tab = self.tabview.add("Model Stats")
         self.account_tab = self.tabview.add("Account Stats")
+        self.health_tab = self.tabview.add("Health")   # node_manager — MAIN/TEST 와 상관없이 전체를 본다
 
         # --- Frames for each tab ---
         self.nodes_frame = NodesFrame(self.nodes_tab)
@@ -117,6 +119,9 @@ class Dashboard(ctk.CTkFrame):
 
         self.account_frame = AccountStatsFrame(self.account_tab)
         self.account_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        self.health_frame = HealthFrame(self.health_tab)
+        self.health_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
     # ======================
     # 🌐 Environment Switch Logic
@@ -158,6 +163,8 @@ class Dashboard(ctk.CTkFrame):
             # Account Stats
             if hasattr(self.account_frame, "refresh"):
                 self.account_frame.refresh()
+
+            self.health_frame.refresh()
 
             print("All tabs refreshed successfully")
 
