@@ -1,5 +1,4 @@
 """필터 드롭다운 휠 스크롤(11-17). Windows 기본 드롭다운은 휠이 안 먹어서 Listbox 팝업으로 바꿨다."""
-import tkinter
 from types import SimpleNamespace
 
 import pytest
@@ -11,16 +10,9 @@ from ui.scroll_option_menu import VISIBLE_ROWS, ScrollableOptionMenu  # noqa: E4
 VALUES = ["All"] + [f"user{i}@x.com" for i in range(40)]
 
 
-@pytest.fixture(scope="module")
-def root():
-    # Windows 에서 한 프로세스가 Tk 를 여러 번 만들면 가끔 tk.tcl 을 못 찾아서 모듈당 하나만 만든다.
-    try:
-        window = ctk.CTk()
-    except tkinter.TclError as exc:
-        pytest.skip(f"no display: {exc}")
-    window.withdraw()
-    yield window
-    window.destroy()
+@pytest.fixture
+def root(tk_root):
+    return tk_root
 
 
 @pytest.fixture

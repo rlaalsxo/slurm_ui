@@ -40,6 +40,11 @@ def get_host(name, limit=24):
     return _request("GET", f"/hosts/{name}", params={"limit": limit})
 
 
+def get_metrics(name, hours=24):
+    """그래프용 1분 지표. hours: 6 / 24 / 168."""
+    return _request("GET", f"/hosts/{name}/metrics", params={"hours": hours})
+
+
 def check_host(name, load_test=False):
     return _request("POST", f"/hosts/{name}/check", timeout=CHECK_TIMEOUT_SECONDS,
                     params={"load_test": str(load_test).lower()})

@@ -5,6 +5,7 @@ import customtkinter as ctk
 
 from services import node_manager_client as nm
 from ui.background import BackgroundTaskMixin, run_detached
+from ui.health_charts import MetricsCharts
 from ui.health_format import detail_lines, header_line, host_line, summary_line
 
 AUTO_REFRESH_MS = 60_000
@@ -48,8 +49,13 @@ class HealthFrame(BackgroundTaskMixin, ctk.CTkFrame):
             button.pack(side="left", padx=5)
             button.configure(state="disabled")
 
-        self.detail = ctk.CTkTextbox(self, font=mono)
-        self.detail.pack(fill="both", expand=True, padx=10, pady=(5, 10))
+        # 아래: 왼쪽 상세 글, 오른쪽 그래프(최근 6시간/24시간/7일)
+        bottom = ctk.CTkFrame(self, fg_color="transparent")
+        bottom.pack(fill="both", expand=True, padx=10, pady=(5, 10))
+        self.detail = ctk.CTkTextbox(bottom, font=mono, width=560)
+        self.detail.pack(side="left", fill="y")
+        self.charts = MetricsCharts(bottom, on_range_change=lambda: self._load_metrics(self._selected))
+        self.charts.pack(side="left", fill="both", expand=True, padx=(8, 0))
         for tag, color in {"ok": "#00ff66", "warn": "#ffcc00", "fail": "#ff5555", "title": "#66aaff", "default": "#cccccc"}.items():
             self.detail.tag_config(tag, foreground=color)
 
@@ -63,6 +69,7 @@ class HealthFrame(BackgroundTaskMixin, ctk.CTkFrame):
                             on_error=self._show_error)
         if self._selected:
             self._load_detail(self._selected)
+            self._load_metrics(self._selected)
 
     def _auto_tick(self):
         self.refresh()
@@ -96,6 +103,7 @@ class HealthFrame(BackgroundTaskMixin, ctk.CTkFrame):
             button.configure(state="normal")
         self._highlight_selected()
         self._load_detail(name)
+        self._load_metrics(name)
 
     def _highlight_selected(self):
         self.table.tag_remove("selected", "1.0", "end")
@@ -117,6 +125,18 @@ class HealthFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
         # 표 새로고침과 따로 돈다 — run_background 는 앞 요청을 버리므로 상세는 독립 스레드로 부른다.
         run_detached(self, task=lambda: nm.get_host(name), on_success=show, on_error=fail)
+
+    def _load_metrics(self, name):
+        if not name:
+            return
+        hours = self.charts.hours
+
+        def show(series):
+            if name == self._selected and hours == self.charts.hours:  # 그사이 다른 호스트·기간을 고르면 버린다
+                self.charts.show(name, series)
+
+        run_detached(self, task=lambda: nm.get_metrics(name, hours), on_success=show,
+                     on_error=lambda exc: self.charts.show_message(f"그래프를 불러오지 못했습니다: {exc}"))
 
     # ---------------------------------------------------------------- 동작
 

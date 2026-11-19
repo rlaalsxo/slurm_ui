@@ -11,7 +11,7 @@ CONNECTS_2 = {
         {"name": "unit:slurmd", "status": "ok", "detail": "active"},
         {"name": "docker", "status": "ok", "detail": "27.3.1"},
         {"name": "gpu0.width", "status": "fail", "detail": "x8 (기대 x16)"},
-        {"name": "gpu1", "status": "ok", "detail": "Gen4 x4 (부하 중)"},
+        {"name": "gpu1", "status": "ok", "detail": "Gen4 x4 (부하 검사, 평소 Gen1)"},
     ],
 }
 CONNECTS_10 = {
@@ -21,8 +21,8 @@ CONNECTS_10 = {
     "reboot": {"id": 3, "mode": "auto", "state": "verifying", "attempt": 1, "detail": "다시 켜짐 — 검증 대기",
                "created_at": 1_763_541_000, "updated_at": 1_763_541_900},
     "items": [
-        {"name": "gpu0", "status": "ok", "detail": "x16 (쉬는 중, 세대는 부하 검사 때)"},
-        {"name": "gpu1.gen", "status": "fail", "detail": "부하 중 Gen1 (기대 Gen4)"},
+        {"name": "gpu0", "status": "ok", "detail": "x16 (세대 미확인 — 부하 검사 전)"},
+        {"name": "gpu1.gen", "status": "fail", "detail": "부하 검사 Gen1 (기대 Gen4, 평소 Gen1)"},
         {"name": "mount:/media/connects/PD", "status": "warn", "detail": "점검 계정(nodeops)이 경로에 못 들어감"},
     ],
 }
@@ -38,7 +38,7 @@ STORAGE = {
 
 def test_gpu_cells_show_link_or_the_problem():
     assert (gpu_cell(CONNECTS_2, 0), gpu_cell(CONNECTS_2, 1)) == ("x8 ✗", "G4 x4")
-    assert (gpu_cell(CONNECTS_10, 0), gpu_cell(CONNECTS_10, 1)) == ("x16", "G1 ✗")
+    assert (gpu_cell(CONNECTS_10, 0), gpu_cell(CONNECTS_10, 1)) == ("G? x16", "G1 ✗")
     assert gpu_cell(STORAGE, 0) == "-"
 
 

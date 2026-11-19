@@ -9,8 +9,9 @@ REBOOT_STATE_LABELS = {
 }
 REBOOT_MODE_LABELS = {"auto": "자동", "when_idle": "수동", "after_jobs": "수동(job 후)"}
 ROLE_LABELS = {"slurm_node": "노드", "storage": "저장소·MSA"}
-COLUMNS = (("이름", 13), ("역할", 15), ("Slurm", 12), ("가동", 6), ("GPU0", 10), ("GPU1", 10),
-           ("마운트", 8), ("서비스", 8), ("재부팅", 16), ("상태", 6))
+COLUMNS = (("이름", 13), ("역할", 14), ("Slurm", 11), ("가동", 6), ("GPU0 링크", 10), ("GPU1 링크", 10),
+           ("GPU 온도", 9), ("GPU 사용", 9), ("CPU", 5), ("부하", 5), ("RAM", 5),
+           ("마운트", 6), ("서비스", 6), ("재부팅", 15), ("상태", 5))
 
 
 def display_width(text):
@@ -62,7 +63,8 @@ def gpu_cell(host, index):
         return _gpu_problem(problem)
     detail = items[0]["detail"]
     words = detail.split()
-    return f"{words[0].replace('Gen', 'G')} {words[1]}" if detail.startswith("Gen") else words[0]
+    # 세대는 부하 중(부하 검사·job 사용 중)에만 안다. 아직 모르면 'G?' 로 비워 두지 않는다.
+    return f"{words[0].replace('Gen', 'G')} {words[1]}" if detail.startswith("Gen") else f"G? {words[0]}"
 
 
 def _group_cell(host, prefixes):
@@ -89,11 +91,30 @@ def reboot_cell(host):
     return "자동" if host.get("reboot_auto") else "수동만"
 
 
+def _pair(values, unit):
+    """GPU 두 장 값을 '71°/64°' 한 칸에. 값이 없으면 '-'."""
+    shown = [f"{value:.0f}{unit}" for value in values if value is not None]
+    return "/".join(shown) if shown else "-"
+
+
+def metric_cells(host):
+    """1분 수집 지표의 지금 값: GPU 온도, GPU 사용률, CPU 온도, 부하(코어당 %), RAM. 5분 넘게 없으면 '-'."""
+    metrics = host.get("metrics") or {}
+    gpus = metrics.get("gpus") or []
+    load = metrics.get("load1")
+    cpus = metrics.get("cpus")
+    load_pct = f"{load / cpus * 100:.0f}%" if load is not None and cpus else "-"
+    cpu_temp = metrics.get("cpu_temp")
+    ram = metrics.get("mem_pct")
+    return (_pair([gpu.get("temp") for gpu in gpus], "°"), _pair([gpu.get("util") for gpu in gpus], "%"),
+            f"{cpu_temp:.0f}°" if cpu_temp is not None else "-", load_pct, f"{ram:.0f}%" if ram is not None else "-")
+
+
 def host_line(host):
     role = ROLE_LABELS.get(host.get("role"), host.get("role"))
     cluster = f"/{host['cluster']}" if host.get("cluster") else ""
     values = (host["name"], f"{role}{cluster}", host.get("slurm_state"), uptime_label(host.get("uptime_seconds")),
-              gpu_cell(host, 0), gpu_cell(host, 1), mount_cell(host), service_cell(host), reboot_cell(host),
+              gpu_cell(host, 0), gpu_cell(host, 1), *metric_cells(host), mount_cell(host), service_cell(host), reboot_cell(host),
               STATUS_LABELS.get(host.get("status"), host.get("status")))
     return " ".join(_cell(value, width) for value, (_, width) in zip(values, COLUMNS))
 
