@@ -1,6 +1,6 @@
-"""Health 탭 문구. 입력은 node_manager /hosts 응답 형태(2026-11-19 실제 첫 점검 결과 기반)."""
-from ui.health_format import (detail_lines, display_width, gpu_cell, header_line, host_line, mount_cell, reboot_cell, service_cell,
-                              summary_line, uptime_label)
+"""Health 문구. 입력은 node_manager /hosts 응답 형태(2026-11-19 실제 첫 점검 결과 기반)."""
+from health_app.format import (COLUMNS, detail_lines, gpu_cell, host_cells, mount_cell, reboot_cell, service_cell, summary_line,
+                               uptime_label)
 
 CONNECTS_2 = {
     "name": "connects-2", "address": "192.168.55.2", "role": "slurm_node", "cluster": "test", "status": "fail",
@@ -54,11 +54,11 @@ def test_reboot_cell():
     assert reboot_cell(STORAGE) == "안 함"
 
 
-def test_rows_line_up_with_the_header():
-    lines = [header_line(), host_line(CONNECTS_2), host_line(CONNECTS_10), host_line(STORAGE)]
-    assert len({display_width(line) for line in lines}) == 1  # 한글은 두 칸으로 센다
-    assert host_line(CONNECTS_2).startswith("connects-2    노드/test") and host_line(CONNECTS_2).rstrip().endswith("이상")
-    assert "저장소·MSA" in host_line(STORAGE)
+def test_row_has_one_value_per_column():
+    rows = [host_cells(CONNECTS_2), host_cells(CONNECTS_10), host_cells(STORAGE)]
+    assert {len(row) for row in rows} == {len(COLUMNS)}
+    assert host_cells(CONNECTS_2)[:2] == ("connects-2", "노드/test") and host_cells(CONNECTS_2)[-1] == "이상"
+    assert host_cells(STORAGE)[1] == "저장소·MSA" and host_cells(STORAGE)[2] == "-"  # Slurm 없음은 빈칸 대신 '-'
 
 
 def test_summary_counts_and_reboot_mode():

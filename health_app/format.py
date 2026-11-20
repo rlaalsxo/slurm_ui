@@ -1,6 +1,6 @@
-"""Health 탭 표·상세 문구 — node_manager 응답(/hosts, /hosts/{name})을 사람이 읽는 줄로 바꾼다. 화면 코드 없는 순수 함수."""
+"""Health 표·상세 문구 — node_manager 응답(/hosts, /hosts/{name})을 사람이 읽는 값으로 바꾼다. 화면 코드 없는 순수 함수."""
 import datetime
-import unicodedata
+import re
 
 STATUS_LABELS = {"ok": "정상", "warn": "주의", "fail": "이상", None: "미점검"}
 REBOOT_STATE_LABELS = {
@@ -9,25 +9,10 @@ REBOOT_STATE_LABELS = {
 }
 REBOOT_MODE_LABELS = {"auto": "자동", "when_idle": "수동", "after_jobs": "수동(job 후)"}
 ROLE_LABELS = {"slurm_node": "노드", "storage": "저장소·MSA"}
-COLUMNS = (("이름", 13), ("역할", 14), ("Slurm", 11), ("가동", 6), ("GPU0 링크", 10), ("GPU1 링크", 10),
-           ("GPU 온도", 9), ("GPU 사용", 9), ("CPU", 5), ("부하", 5), ("RAM", 5),
-           ("마운트", 6), ("서비스", 6), ("재부팅", 15), ("상태", 5))
-
-
-def display_width(text):
-    """고정폭 글꼴에서 한글·전각 문자는 두 칸을 차지한다 — 글자 수로 맞추면 한글이 든 칸부터 표가 어긋난다."""
-    return sum(2 if unicodedata.east_asian_width(char) in ("W", "F") else 1 for char in text)
-
-
-def _cell(text, width):
-    text = str(text if text not in (None, "") else "-")
-    while display_width(text) > width:
-        text = text[:-1]
-    return text + " " * (width - display_width(text))
-
-
-def header_line():
-    return " ".join(_cell(name, width) for name, width in COLUMNS)
+COLUMNS = ("이름", "역할", "Slurm", "가동", "GPU0 링크", "GPU1 링크", "GPU 온도", "GPU 사용", "CPU", "부하", "RAM",
+           "마운트", "서비스", "재부팅", "상태")
+NUMERIC_COLUMNS = {"GPU 온도", "GPU 사용", "CPU", "부하", "RAM"}
+STATUS_ORDER = {"fail": 0, "warn": 1, "ok": 2}   # 상태로 정렬하면 나쁜 것부터
 
 
 def uptime_label(seconds):
@@ -110,13 +95,26 @@ def metric_cells(host):
             f"{cpu_temp:.0f}°" if cpu_temp is not None else "-", load_pct, f"{ram:.0f}%" if ram is not None else "-")
 
 
-def host_line(host):
+def host_cells(host):
+    """표 한 줄 — COLUMNS 순서. 빈 값은 '-'."""
     role = ROLE_LABELS.get(host.get("role"), host.get("role"))
     cluster = f"/{host['cluster']}" if host.get("cluster") else ""
     values = (host["name"], f"{role}{cluster}", host.get("slurm_state"), uptime_label(host.get("uptime_seconds")),
               gpu_cell(host, 0), gpu_cell(host, 1), *metric_cells(host), mount_cell(host), service_cell(host), reboot_cell(host),
               STATUS_LABELS.get(host.get("status"), host.get("status")))
-    return " ".join(_cell(value, width) for value, (_, width) in zip(values, COLUMNS))
+    return tuple("-" if value in (None, "") else str(value) for value in values)
+
+
+def sort_key(column, host, text):
+    """열 정렬 기준. 숫자 칸은 숫자로('8.7d' 와 '23h' 를 글자로 비교하면 어긋난다), 이름은 connects-2 < connects-10."""
+    if column == "가동":
+        return host.get("uptime_seconds") or -1
+    if column == "상태":
+        return STATUS_ORDER.get(host.get("status"), len(STATUS_ORDER))
+    if column in NUMERIC_COLUMNS:
+        numbers = [float(number) for number in re.findall(r"\d+(?:\.\d+)?", text)]
+        return max(numbers) if numbers else -1
+    return tuple(int(part) if part.isdigit() else part for part in re.split(r"(\d+)", text))
 
 
 def summary_line(hosts, health=None):

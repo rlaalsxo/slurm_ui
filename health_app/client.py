@@ -1,4 +1,4 @@
-"""node_manager(노드 점검·재부팅 서비스, connects-2:8600) 호출. 주소와 토큰은 .env 의 NODE_MANAGER_URL / NODE_MANAGER_TOKEN.
+"""node_manager(노드 점검·재부팅 서비스, 37번:8600) 호출. 주소와 토큰은 .env 의 NODE_MANAGER_URL / NODE_MANAGER_TOKEN.
 
 MAIN/TEST 전환과 상관없이 두 클러스터와 37번을 한 번에 본다.
 """

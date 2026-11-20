@@ -1,1 +1,5 @@
-cd C:\Users\user\Desktop\slurm_ui && conda activate ui && pyinstaller --noconfirm --onefile --windowed --name "SlurmUI" --icon "curie.ico" --add-data "services/.env;." --add-data "curie.ico;." --hidden-import "backports" --hidden-import "backports.tarfile" main.py
+처음 한 번(Health 창용 Qt 패키지):
+conda activate ui && pip install PySide6-Essentials==6.12.0 pyqtgraph==0.14.0
+
+빌드(exe 하나: 그냥 실행 = Slurm 화면, SlurmUI.exe --health = Node Health 창):
+cd C:\Users\user\Desktop\slurm_ui && conda activate ui && pyinstaller --noconfirm --onefile --windowed --name "SlurmUI" --icon "curie.ico" --add-data "services/.env;." --add-data "curie.ico;." --hidden-import "backports" --hidden-import "backports.tarfile" --exclude-module matplotlib main.py

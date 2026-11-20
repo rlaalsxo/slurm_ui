@@ -1,12 +1,14 @@
 # ui/dashboard.py
 import platform
+from tkinter import messagebox
+
 import customtkinter as ctk
 from ui.nodes import NodesFrame
 from ui.jobs_live import JobsLiveFrame
 from ui.jobs_history import JobsHistoryFrame
 from ui.model_stats import ModelStatsFrame
 from ui.account_stats import AccountStatsFrame
-from ui.health import HealthFrame
+from ui.health_launcher import launch_health
 from services import api_client
 
 
@@ -71,6 +73,18 @@ class Dashboard(ctk.CTkFrame):
         )
         self.test_button.pack(side="left", padx=10)
 
+        # Health: node_manager 화면(Qt) — MAIN/TEST 를 함께 보므로 Slurm 탭이 아니라 따로 띄운다
+        self.health_button = ctk.CTkButton(
+            env_frame,
+            text="Health 창 열기",
+            width=140,
+            fg_color="#2f6b4f",
+            hover_color="#3b8763",
+            command=self.open_health,
+            font=DEFAULT_FONT
+        )
+        self.health_button.pack(side="left", padx=(30, 10))
+
         # Refresh all button
         self.refresh_all_button = ctk.CTkButton(
             env_frame,
@@ -102,7 +116,6 @@ class Dashboard(ctk.CTkFrame):
         self.history_tab = self.tabview.add("Job History")
         self.stats_tab = self.tabview.add("Model Stats")
         self.account_tab = self.tabview.add("Account Stats")
-        self.health_tab = self.tabview.add("Health")   # node_manager — MAIN/TEST 와 상관없이 전체를 본다
 
         # --- Frames for each tab ---
         self.nodes_frame = NodesFrame(self.nodes_tab)
@@ -120,9 +133,6 @@ class Dashboard(ctk.CTkFrame):
         self.account_frame = AccountStatsFrame(self.account_tab)
         self.account_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
-        self.health_frame = HealthFrame(self.health_tab)
-        self.health_frame.pack(fill="both", expand=True, padx=5, pady=5)
-
     # ======================
     # 🌐 Environment Switch Logic
     # ======================
@@ -135,6 +145,15 @@ class Dashboard(ctk.CTkFrame):
 
         print(f"Switched environment to {env}")
         self.refresh_all()  # Auto-refresh after switching
+
+    # ======================
+    # 🩺 Node Health (separate Qt window)
+    # ======================
+    def open_health(self):
+        try:
+            launch_health()
+        except OSError as exc:
+            messagebox.showerror("Health", f"Health 창을 띄우지 못했습니다: {exc}")
 
     # ======================
     # 🔄 Global Refresh
@@ -163,8 +182,6 @@ class Dashboard(ctk.CTkFrame):
             # Account Stats
             if hasattr(self.account_frame, "refresh"):
                 self.account_frame.refresh()
-
-            self.health_frame.refresh()
 
             print("All tabs refreshed successfully")
 

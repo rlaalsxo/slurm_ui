@@ -1,55 +1,38 @@
-import customtkinter as ctk
-import os
-import sys
-import logging
-import traceback
-from ui.dashboard import Dashboard
+"""SlurmUI.exe — 그냥 실행하면 Slurm Monitor(Tk), --health 로 실행하면 Node Health(Qt).
 
-# 로그 파일 설정
-def get_log_path():
-    if getattr(sys, 'frozen', False):
-        return os.path.join(os.path.dirname(sys.executable), "slurm_ui_error.log")
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "slurm_ui_error.log")
+Tk 와 Qt 는 한 프로세스에 섞을 수 없어서 모드마다 필요한 쪽만 불러온다.
+"""
+import logging
+import sys
+import traceback
+
+from runtime import HEALTH_FLAG, log_path
 
 logging.basicConfig(
-    filename=get_log_path(),
+    filename=log_path(),
     level=logging.ERROR,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
+
+def _log_uncaught(exc_type, exc_value, exc_tb):
+    # 창 모드 exe 는 콘솔이 없어 Qt 콜백 안의 오류가 그냥 사라진다 — 로그 파일에 남긴다
+    logger.error("Uncaught exception:\n%s", "".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
 
 
-class SlurmMonitorApp(ctk.CTk):
-    def __init__(self):
-        super().__init__()
-        self.title("Slurm Monitor Dashboard")
-        self.geometry("1600x900")
-
-        # 아이콘 설정
-        if getattr(sys, 'frozen', False):
-            icon_path = os.path.join(sys._MEIPASS, "curie.ico")
-        else:
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "curie.ico")
-        if os.path.exists(icon_path):
-            self.iconbitmap(icon_path)
-            self.after(200, lambda: self.iconbitmap(icon_path))
-        self.dashboard = Dashboard(self)
-        self.dashboard.pack(fill="both", expand=True)
-
-        self.report_callback_exception = self._on_tk_error
-
-    def _on_tk_error(self, exc_type, exc_value, exc_tb):
-        error_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-        logger.error(f"Tkinter exception:\n{error_msg}")
+def main():
+    sys.excepthook = _log_uncaught
+    if HEALTH_FLAG in sys.argv[1:]:
+        from health_app.app import run
+    else:
+        from ui.app import run
+    return run()
 
 
 if __name__ == "__main__":
     try:
-        app = SlurmMonitorApp()
-        app.mainloop()
+        sys.exit(main())
     except Exception:
         logger.critical(f"Fatal exception:\n{traceback.format_exc()}")
         sys.exit(1)

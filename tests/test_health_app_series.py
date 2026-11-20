@@ -1,14 +1,16 @@
-"""Health 탭 그래프 데이터 손질 — 끊긴 구간, 코어당 부하, 축 범위, GPU 색 고정."""
+"""Health 그래프 데이터 손질 — 끊긴 구간, 코어당 부하, 축 범위, GPU 색 고정, 정렬 기준."""
 import math
 
-from ui.health_charts import GPU_COLORS, line_points, panel_series, value_range, with_load_percent
+from health_app.format import sort_key
+from health_app.series import finite_runs, line_points, nearest_index, panel_series, value_range, with_load_percent
+from health_app.theme import GPU_COLORS
 
 
 def test_line_breaks_where_collection_stopped():
     """재부팅 등으로 수집이 끊긴 구간을 직선으로 이어 그리지 않는다."""
     rows = [{"at": 0, "v": 1}, {"at": 240, "v": 2}, {"at": 3600, "v": 3}]
     times, values = line_points(rows, "v", bucket_seconds=240)
-    assert len(times) == 4 and math.isnan(values[2]) and values[-1] == 3.0
+    assert times == [0.0, 240.0, 480.0, 3600.0] and math.isnan(values[2]) and values[-1] == 3.0
 
 
 def test_missing_values_become_gaps():
@@ -38,21 +40,18 @@ def test_value_range_pads_and_includes_the_reference_line():
     assert value_range([("x", "#000", [], [math.nan])], None) == (0, 100)
 
 
-def test_hover_box_names_single_series_by_the_panel_title(tk_root):
-    """제목은 왼쪽 정렬이라 get_title() 기본(가운데)은 빈 문자열이다 — 값 상자가 이름 없이 나오던 버그."""
-    from types import SimpleNamespace
+def test_fill_runs_split_at_gaps():
+    nan = math.nan
+    assert finite_runs([0, 1, 2, 3, 4], [1, 2, nan, 4, 5]) == [([0, 1], [1, 2]), ([3, 4], [4, 5])]
+    assert finite_runs([0], [nan]) == []
 
-    from matplotlib import dates as mdates
 
-    from ui.health_charts import MetricsCharts
-    charts = MetricsCharts(tk_root, on_range_change=lambda: None)
-    try:
-        charts.show("n", {"hours": 24, "bucket_seconds": 60, "gpus": {},
-                          "host": [{"at": 1_700_000_000 + i * 60, "cpu_temp": 50 + i, "load1": 1, "cpus": 4, "mem_pct": 30}
-                                   for i in range(5)]})
-        ax = charts.axes[3]
-        moment = mdates.date2num(ax.lines[0].get_xdata()[2])
-        charts._on_move(SimpleNamespace(inaxes=ax, xdata=moment, x=ax.bbox.x0 + 10))
-        assert "CPU 온도  52°C" in charts._tooltip.get_text()
-    finally:
-        charts.destroy()
+def test_nearest_index():
+    assert nearest_index([0, 60, 120], 100) == 2 and nearest_index([], 5) is None
+
+
+def test_sort_keys_compare_numbers_not_text():
+    assert sort_key("가동", {"uptime_seconds": 23 * 3600}, "23h") < sort_key("가동", {"uptime_seconds": 8 * 86400}, "8.0d")
+    assert sort_key("GPU 온도", {}, "48°/92°") == 92 and sort_key("RAM", {}, "-") == -1
+    assert sort_key("이름", {}, "connects-2") < sort_key("이름", {}, "connects-10")
+    assert sort_key("상태", {"status": "fail"}, "이상") < sort_key("상태", {"status": "ok"}, "정상")
