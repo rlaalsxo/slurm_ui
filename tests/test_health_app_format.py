@@ -84,3 +84,20 @@ def test_detail_lists_items_expectations_and_history():
     assert any("GPU0: RTX 3080 Ti  x16  Gen4" in text for text in texts)
     assert any("수동" in text and "실패" in text and "재부팅 후에도 이상" in text for text in texts)
     assert dict(lines)[next(t for t in texts if "gpu0.width" in t)] == "fail"
+
+
+def test_detail_shows_boot_history_and_recent_events():
+    from health_app.format import boot_lines, event_lines
+    boots = [{"boot_id": "c", "up_at": 1_763_854_060, "down_at": 1_763_853_520, "cause": "abrupt",
+              "before_stop": "꺼지기 직전 10분: GPU 전력 합계 최대 681W(00:23)"},
+             {"boot_id": "b", "up_at": 1_763_600_000, "down_at": 1_763_599_970, "cause": "clean", "before_stop": None},
+             {"boot_id": "a", "up_at": 1_763_000_000, "down_at": None, "cause": "first"}]
+    lines = boot_lines(boots)
+    assert lines[1][1] == "title" and "갑자기 꺼짐" in lines[2][0] and lines[2][1] == "warn" and "직전 기록" in lines[2][0]
+    assert lines[3] == ("      └ 꺼지기 직전 10분: GPU 전력 합계 최대 681W(00:23)", "warn")
+    assert "정상 재부팅" in lines[4][0] and lines[4][1] == "default"
+    assert lines[5][1] == "default" and "직전 기록" not in lines[5][0] and len(lines) == 6
+    events = event_lines([{"at": 1_763_854_000, "kind": "unreachable", "detail": "37번에서 접속 안 됨: timeout"},
+                          {"at": 1_763_854_100, "kind": "slurm", "detail": "IDLE → DOWN+DRAIN (Not responding)"}])
+    assert [tag for _, tag in events[2:]] == ["warn", "default"] and "접속 끊김" in events[2][0]
+    assert boot_lines([]) == [] and event_lines(None) == []

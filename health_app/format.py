@@ -9,6 +9,12 @@ REBOOT_STATE_LABELS = {
 }
 REBOOT_MODE_LABELS = {"auto": "자동", "when_idle": "수동", "after_jobs": "수동(job 후)"}
 ROLE_LABELS = {"slurm_node": "노드", "storage": "저장소·MSA"}
+BOOT_CAUSE_LABELS = {"node_manager": "node_manager 재부팅", "clean": "정상 재부팅(사람·OS 업데이트)",
+                     "abrupt": "갑자기 꺼짐(전원·하드웨어·커널)", "unexpected": "예고 없음(종료 기록 확인 불가)", "first": ""}
+BOOT_WARN_CAUSES = {"abrupt", "unexpected"}
+EVENT_KIND_LABELS = {"boot": "부팅", "slurm": "Slurm", "unreachable": "접속 끊김", "reachable": "접속 회복"}
+EVENT_WARN_KINDS = {"unreachable"}
+MAX_BOOT_LINES, MAX_EVENT_LINES = 10, 15
 COLUMNS = ("이름", "역할", "Slurm", "가동", "GPU0 링크", "GPU1 링크", "GPU 온도", "GPU 사용", "CPU", "부하", "RAM",
            "마운트", "서비스", "재부팅", "상태")
 NUMERIC_COLUMNS = {"GPU 온도", "GPU 사용", "CPU", "부하", "RAM"}
@@ -136,6 +142,34 @@ def time_label(epoch, with_date=False):
     return moment.strftime("%m-%d %H:%M" if with_date else "%H:%M")
 
 
+def boot_lines(boots):
+    """[부팅 이력] — 최근 순. 정상 종료 기록(last -x)으로 '사람·OS 가 재부팅'과 '갑자기 꺼짐'을 나눈다.
+    우리가 하지 않은 재부팅엔 꺼지기 직전 10분의 GPU 전력·온도 요약이 한 줄 더 붙는다."""
+    if not boots:
+        return []
+    lines = [("", "default"), ("[부팅 이력 — 최근 순, 직전 기록 = 그 전 부팅이 멈춘 무렵]", "title")]
+    for boot in boots[:MAX_BOOT_LINES]:
+        tag = "warn" if boot["cause"] in BOOT_WARN_CAUSES else "default"
+        before = f"직전 기록 {time_label(boot['down_at'], True)}" if boot.get("down_at") else ""
+        lines.append((f"  {time_label(boot['up_at'], True)} 켜짐   {before:<20} {BOOT_CAUSE_LABELS.get(boot['cause'], boot['cause'])}",
+                      tag))
+        if boot.get("before_stop"):
+            lines.append((f"      └ {boot['before_stop']}", tag))
+    return lines
+
+
+def event_lines(events):
+    """[최근 사건] — 37번에서 본 접속 끊김·회복, 부팅, Slurm 상태가 나빠지거나 돌아온 때."""
+    if not events:
+        return []
+    lines = [("", "default"), ("[최근 사건]", "title")]
+    for event in events[:MAX_EVENT_LINES]:
+        label = EVENT_KIND_LABELS.get(event["kind"], event["kind"])
+        warn = event["kind"] in EVENT_WARN_KINDS or any(word in event["detail"] for word in ("갑자기 꺼짐", "예고 없음"))
+        lines.append((f"  {time_label(event['at'], True)}  {label:<6} {event['detail']}", "warn" if warn else "default"))
+    return lines
+
+
 def detail_lines(detail):
     """선택한 호스트 상세 → [(문구, 태그)]. 태그는 ok/warn/fail/title/default."""
     status = detail.get("status")
@@ -160,6 +194,7 @@ def detail_lines(detail):
         recent = "  ".join(f"{time_label(row['at'])} {STATUS_LABELS.get(row['status'], row['status'])}"
                            for row in detail["history"][:12])
         lines += [("", "default"), ("[최근 점검]", "title"), (f"  {recent}", "default")]
+    lines += boot_lines(detail.get("boots")) + event_lines(detail.get("events"))
     if detail.get("reboots"):
         lines += [("", "default"), ("[재부팅 이력]", "title")]
         tags = {"done": "ok", "failed": "fail", "cancelled": "default"}

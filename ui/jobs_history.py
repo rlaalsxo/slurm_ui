@@ -1,7 +1,9 @@
 import customtkinter as ctk
 
+from health_app import client as node_manager
 from services.api_client import get_job_log, get_jobs
 from ui.background import BackgroundTaskMixin, run_detached
+from ui.job_failure import NODE_FAIL, TIMEOUT, end_epoch, failure_kind, node_fail_text, timeout_text
 from ui.date_utils import read_date_range, set_recent_range
 from ui.job_utils import (
     ACCOUNT_COLUMN_WIDTH,
@@ -196,7 +198,7 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
                 f"  Filter: {', '.join(active_filters)} ({len(jobs)}/{len(self._jobs_cache)} jobs)\n",
                 "default",
             )
-        self.textbox.insert("end", "  (Double-click a COMPLETED/FAILED job to view log)\n\n", "default")
+        self.textbox.insert("end", "  (Double-click: COMPLETED/FAILED → log, NODE_FAIL/TIMEOUT → cause)\n\n", "default")
 
         for job in sorted(jobs, key=lambda item: safe_text(item.get("start"), ""), reverse=True):
             line_idx = int(self.textbox.index("end-1c").split(".")[0])
@@ -230,6 +232,9 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
         state = normalized_state(job.get("state"))
         job_id = safe_text(job.get("job_id"), "")
+        if failure_kind(state):
+            self._show_cause_popup(job)
+            return
         if is_completed(state) or is_failed(state):
             self._show_log_popup(job)
             return
@@ -259,6 +264,38 @@ class JobsHistoryFrame(BackgroundTaskMixin, ctk.CTkFrame):
 
         btn = ctk.CTkButton(popup, text="OK", width=100, command=popup.destroy)
         btn.pack(pady=(0, 15))
+
+    def _show_cause_popup(self, job):
+        """NODE_FAIL 은 node_manager 에 그 노드·시각을 물어 원인을 보이고, TIMEOUT 은 시간 제한 설명을 보인다."""
+        job_id, node = safe_text(job.get("job_id"), ""), safe_text(job.get("node_list"), "")
+        kind = failure_kind(job.get("state"))
+        popup = ctk.CTkToplevel(self)
+        popup.title(f"{'NODE_FAIL' if kind == NODE_FAIL else 'TIMEOUT'} 원인: {job_id} ({node})")
+        popup.geometry("760x360")
+        popup.attributes("-topmost", True)
+        popup.after(300, lambda: popup.attributes("-topmost", False))
+        textbox = ctk.CTkTextbox(popup, font=ctk.CTkFont(family="Consolas", size=13), wrap="word")
+        textbox.pack(fill="both", expand=True, padx=10, pady=(10, 5))
+        ctk.CTkButton(popup, text="로그 보기", width=120, command=lambda: self._show_log_popup(job)).pack(pady=(0, 10))
+
+        def show(text):
+            textbox.configure(state="normal")
+            textbox.delete("1.0", "end")
+            textbox.insert("end", text)
+            textbox.configure(state="disabled")
+
+        if kind == TIMEOUT:
+            show(timeout_text(job))
+            return
+        at = end_epoch(job)
+        if not node or at is None:
+            show("노드나 종료 시각이 없어 원인을 찾을 수 없습니다.")
+            return
+        show(f"{node} 의 {safe_text(job.get('end'))} 전후 기록을 node_manager 에서 찾는 중...")
+        run_detached(popup, task=lambda: node_manager.explain_node_fail(node, at),
+                     on_success=lambda answer: show(node_fail_text(answer)),
+                     on_error=lambda exc: show(f"node_manager 에서 원인을 가져오지 못했습니다: {exc}\n"
+                                               f"(node_manager 가 보지 않는 노드이거나 연결 실패)"))
 
     def _show_log_popup(self, job):
         job_id = safe_text(job.get("job_id"), "")

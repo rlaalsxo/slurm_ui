@@ -63,5 +63,10 @@ def cancel_reboot(name):
     return _request("DELETE", f"/hosts/{name}/reboot")
 
 
+def explain_node_fail(host, at):
+    """host 노드에서 at(epoch 초)에 NODE_FAIL 로 끝난 job 의 원인 {cause, summary, evidence}. node_manager 가 안 보는 노드면 404."""
+    return _request("GET", "/explain", params={"host": host, "at": at})
+
+
 def get_reboots(limit=50):
     return _request("GET", "/reboots", params={"limit": limit})
