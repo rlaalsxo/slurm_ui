@@ -67,7 +67,7 @@ def log_requests(monkeypatch):
 def test_log_lookup_through_the_controller_carries_the_token(monkeypatch, log_requests):
     monkeypatch.setattr(api_client, "SERVER_URL_MAIN", "http://223.130.157.152:8500")
 
-    api_client._presigned_log_url("41300", {"user_id": "481", "internal_job_id": "19972", "model_id": "bioemu"})
+    api_client._log_lookup("41300", {"user_id": "481", "internal_job_id": "19972", "model_id": "bioemu"})
 
     request = log_requests[0]
     assert request["url"] == "http://223.130.157.152:8500/slurm/logs/41300"
@@ -79,7 +79,7 @@ def test_log_lookup_through_the_controller_carries_the_token(monkeypatch, log_re
 def test_log_lookup_to_another_server_does_not_carry_the_token(monkeypatch, log_requests, server_url):
     monkeypatch.setattr(api_client, "SERVER_URL_MAIN", server_url)
 
-    api_client._presigned_log_url("41300", {"user_id": "481"})
+    api_client._log_lookup("41300", {"user_id": "481"})
 
     assert "headers" not in log_requests[0]
 
@@ -88,6 +88,6 @@ def test_log_lookup_without_a_token_configured_sends_no_header(monkeypatch, log_
     monkeypatch.setattr(api_client, "SERVER_URL_MAIN", "http://223.130.157.152:8500")
     monkeypatch.setattr(api_client, "CONTROLLER_TOKEN", None)
 
-    api_client._presigned_log_url("41300", {"user_id": "481"})
+    api_client._log_lookup("41300", {"user_id": "481"})
 
     assert "headers" not in log_requests[0]

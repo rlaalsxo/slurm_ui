@@ -104,3 +104,21 @@ def test_the_token_is_not_sent_to_a_malformed_server_url(calls, monkeypatch, url
     with pytest.raises(ValueError, match="valid configured"):
         api_client.get_job_log("901", LAIDD_JOB)
     assert calls["json"] == []
+
+
+def test_a_curieus_log_uses_the_body_the_controller_read_instead_of_the_link(calls, monkeypatch):
+    """암호화 로그(ENCRYPT_JOB_LOGS)는 presigned 링크로 열면 NCP 가 400 — 컨트롤러가 준 본문을 쓰고 링크는 받지 않는다."""
+    monkeypatch.setattr(api_client, "_request_json",
+                        lambda *a, **kw: {"url": "https://storage.test/signed", "content": "DECRYPTED"})
+
+    assert api_client.get_job_log("902", CURIEUS_JOB) == "DECRYPTED"
+    assert calls["download"] == []
+
+
+def test_a_lookup_without_a_body_still_downloads_the_link(calls, monkeypatch):
+    """옛 컨트롤러·LAIDD 서버처럼 본문을 안 주거나(None) 서버가 못 읽었으면 지금처럼 링크로 받는다."""
+    monkeypatch.setattr(api_client, "_request_json",
+                        lambda *a, **kw: {"url": "https://storage.test/signed", "content": None})
+
+    assert api_client.get_job_log("902", CURIEUS_JOB) == "LOG BODY"
+    assert calls["download"] == ["https://storage.test/signed"]

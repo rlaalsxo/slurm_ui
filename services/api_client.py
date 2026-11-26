@@ -208,10 +208,10 @@ def _laidd_log_endpoint():
     return url, token
 
 
-def _presigned_log_url(job_id, job):
-    """로그를 받을 presigned URL. LAIDD 잡은 LAIDD 서버에, 나머지는 Curieus 서버에 묻는다.
+def _log_lookup(job_id, job):
+    """로그 조회 응답 `{"url": presigned, "content"?: 본문}`. LAIDD 잡은 LAIDD 서버에, 나머지는 Curieus 쪽에 묻는다.
 
-    두 서버가 같은 계약(`GET /slurm/logs/{executor_job_id}` → `{"url": ...}`)을 쓰므로 이후 단계는 같다.
+    두 서버가 같은 계약(`GET /slurm/logs/{executor_job_id}`)을 쓴다. 컨트롤러는 암호화 로그용 본문(`content`)도 준다.
     LAIDD 쪽은 사용자 세션이 없는 도구라 `X-API-Key` 로 인증하고, 키가 리다이렉트로 새지 않게 따라가지 않는다.
     """
     if is_laidd_job(job):
@@ -223,7 +223,7 @@ def _presigned_log_url(job_id, job):
             headers={"X-API-Key": token},
             timeout=10,
             allow_redirects=False,
-        )["url"]
+        )
 
     url = get_server_url()
     if not url:
@@ -246,13 +246,15 @@ def _presigned_log_url(job_id, job):
         params=params,
         timeout=10,
         **token_kwargs,
-    )["url"]
+    )
 
 
 def get_job_log(job_id, job=None):
-    """SLURM Job 로그 조회 (Presigned URL 방식)"""
-    presigned_url = _presigned_log_url(job_id, job)
-    log_res = _session.get(presigned_url, timeout=30, verify=VERIFY_PRESIGNED_URL)
+    """SLURM Job 로그. 본문이 오면 그걸 쓰고(암호화 로그는 presigned 링크로 열리지 않는다), 없으면 링크로 받는다."""
+    found = _log_lookup(job_id, job)
+    if found.get("content") is not None:
+        return found["content"]
+    log_res = _session.get(found["url"], timeout=30, verify=VERIFY_PRESIGNED_URL)
     log_res.raise_for_status()
     return log_res.text
 
