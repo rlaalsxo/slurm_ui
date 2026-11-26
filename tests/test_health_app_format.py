@@ -86,6 +86,29 @@ def test_detail_lists_items_expectations_and_history():
     assert dict(lines)[next(t for t in texts if "gpu0.width" in t)] == "fail"
 
 
+def test_detail_shows_specs_with_temperature_limits():
+    """2026-11-26 실측: connects-3 (ASUS, 7950X, 3080 Ti 300W 상한), 37번(듀얼 Xeon, GPU 온도 안 봄)."""
+    from health_app.format import spec_lines
+    connects_3 = {"temps": {"cpu_max": 95.0, "gpu_max": 93.0, "warn_margin": 5}, "latest_probe": {"hardware": {
+        "board_vendor": "ASUSTeK COMPUTER INC.", "board_name": "PRIME X870-P WIFI",
+        "cpu": {"model": "AMD Ryzen 9 7950X 16-Core Processor", "sockets": 1, "cores": 16, "threads": 32},
+        "mem_total_kb": 65617772,
+        "gpus": [{"index": 0, "name": "NVIDIA GeForce RTX 3080 Ti", "memory_mib": 12288, "power_limit_w": 300.0, "power_default_w": 350.0}]}}}
+    texts = [text for text, _ in spec_lines(connects_3)]
+    assert texts[1] == "[사양]" and texts[2] == "  보드  ASUS PRIME X870-P WIFI"
+    assert "AMD Ryzen 9 7950X 16-Core Processor · 16코어 32스레드" in texts[3] and texts[3].endswith("온도 한계 95°C (주의 90)")
+    assert texts[4] == "  RAM   62.6GB (OS 기준)"
+    assert "RTX 3080 Ti 12GB · 전력 상한 300W (기본 350W)" in texts[5] and texts[5].endswith("온도 한계 93°C (주의 88)")
+    storage = {"temps": {"cpu_max": 104.0, "gpu_max": None}, "latest_probe": {"hardware": {
+        "board_vendor": "Supermicro", "board_name": "X11DPi-NT",
+        "cpu": {"model": "Intel(R) Xeon(R) Gold 6154 CPU @ 3.00GHz", "sockets": 2, "cores": 36, "threads": 72},
+        "gpus": [{"index": 0, "name": "NVIDIA GeForce GTX 1080", "memory_mib": 8192, "power_limit_w": 250.0, "power_default_w": 250.0}]}}}
+    texts = [text for text, _ in spec_lines(storage)]
+    assert "Intel Xeon Gold 6154 CPU @ 3.00GHz · 2소켓 · 36코어 72스레드" in texts[3]
+    assert "GTX 1080 8GB · 전력 250W" in texts[4] and texts[4].endswith("온도 감시 안 함")
+    assert spec_lines({})[-1] == ("  다음 정기 점검 뒤에 표시됩니다", "default")
+
+
 def test_detail_shows_boot_history_and_recent_events():
     from health_app.format import boot_lines, event_lines
     boots = [{"boot_id": "c", "up_at": 1_763_854_060, "down_at": 1_763_853_520, "cause": "abrupt",
@@ -101,3 +124,7 @@ def test_detail_shows_boot_history_and_recent_events():
                           {"at": 1_763_854_100, "kind": "slurm", "detail": "IDLE → DOWN+DRAIN (Not responding)"}])
     assert [tag for _, tag in events[2:]] == ["warn", "default"] and "접속 끊김" in events[2][0]
     assert boot_lines([]) == [] and event_lines(None) == []
+    temps = event_lines([{"at": 1_763_854_100, "kind": "temp", "detail": "GPU0 한계 온도 도달 95°C (한계 93°C)"},
+                         {"at": 1_763_854_200, "kind": "temp", "detail": "GPU0 온도 주의: 10분 연속 89°C 이상 (주의 88 · 한계 93°C)"},
+                         {"at": 1_763_854_800, "kind": "temp", "detail": "GPU0 온도 정상으로 내려옴 (지금 80°C)"}])
+    assert [tag for _, tag in temps[2:]] == ["warn", "warn", "default"] and "온도" in temps[4][0]

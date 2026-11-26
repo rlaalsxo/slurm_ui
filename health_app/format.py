@@ -12,8 +12,9 @@ ROLE_LABELS = {"slurm_node": "노드", "storage": "저장소·MSA"}
 BOOT_CAUSE_LABELS = {"node_manager": "node_manager 재부팅", "clean": "정상 재부팅(사람·OS 업데이트)",
                      "abrupt": "갑자기 꺼짐(전원·하드웨어·커널)", "unexpected": "예고 없음(종료 기록 확인 불가)", "first": ""}
 BOOT_WARN_CAUSES = {"abrupt", "unexpected"}
-EVENT_KIND_LABELS = {"boot": "부팅", "slurm": "Slurm", "unreachable": "접속 끊김", "reachable": "접속 회복"}
+EVENT_KIND_LABELS = {"boot": "부팅", "slurm": "Slurm", "unreachable": "접속 끊김", "reachable": "접속 회복", "temp": "온도"}
 EVENT_WARN_KINDS = {"unreachable"}
+EVENT_WARN_WORDS = ("갑자기 꺼짐", "예고 없음", "온도 주의", "온도 이상", "한계 온도 도달")
 MAX_BOOT_LINES, MAX_EVENT_LINES = 10, 15
 COLUMNS = ("이름", "역할", "Slurm", "가동", "GPU0 링크", "GPU1 링크", "GPU 온도", "GPU 사용", "CPU", "부하", "RAM",
            "마운트", "서비스", "재부팅", "상태")
@@ -159,14 +160,57 @@ def boot_lines(boots):
 
 
 def event_lines(events):
-    """[최근 사건] — 37번에서 본 접속 끊김·회복, 부팅, Slurm 상태가 나빠지거나 돌아온 때."""
+    """[최근 사건] — 37번에서 본 접속 끊김·회복, 부팅, Slurm 상태가 나빠지거나 돌아온 때, 온도 주의·이상·회복."""
     if not events:
         return []
     lines = [("", "default"), ("[최근 사건]", "title")]
     for event in events[:MAX_EVENT_LINES]:
         label = EVENT_KIND_LABELS.get(event["kind"], event["kind"])
-        warn = event["kind"] in EVENT_WARN_KINDS or any(word in event["detail"] for word in ("갑자기 꺼짐", "예고 없음"))
+        warn = event["kind"] in EVENT_WARN_KINDS or any(word in event["detail"] for word in EVENT_WARN_WORDS)
         lines.append((f"  {time_label(event['at'], True)}  {label:<6} {event['detail']}", "warn" if warn else "default"))
+    return lines
+
+
+VENDOR_SHORT = {"Gigabyte Technology Co., Ltd.": "Gigabyte", "ASUSTeK COMPUTER INC.": "ASUS"}
+CPU_NAME_NOISE = re.compile(r"\((R|TM)\)")
+
+
+def _limit_text(max_c, margin):
+    return f"온도 한계 {max_c:.0f}°C (주의 {max_c - margin:.0f})" if max_c else ""
+
+
+def _cpu_text(cpu):
+    model = " ".join(CPU_NAME_NOISE.sub("", cpu.get("model") or "?").split())
+    sockets = f"{cpu['sockets']}소켓 · " if (cpu.get("sockets") or 1) > 1 else ""
+    return f"{model} · {sockets}{cpu.get('cores')}코어 {cpu.get('threads')}스레드"
+
+
+def _gpu_text(gpu):
+    name = (gpu.get("name") or "?").replace("NVIDIA ", "").replace("GeForce ", "")
+    memory = f" {gpu['memory_mib'] / 1024:.0f}GB" if gpu.get("memory_mib") else ""
+    limit, default = gpu.get("power_limit_w"), gpu.get("power_default_w")
+    power = (f"전력 상한 {limit:.0f}W (기본 {default:.0f}W)" if limit and default and limit < default
+             else f"전력 {limit:.0f}W" if limit else "")
+    return f"{name}{memory}" + (f" · {power}" if power else "")
+
+
+def spec_lines(detail):
+    """[사양] — 1시간 점검이 읽은 보드·CPU·RAM·GPU와 온도 한계(inventory). 사양을 아직 못 읽었으면 안내 한 줄."""
+    spec = (detail.get("latest_probe") or {}).get("hardware")
+    lines = [("", "default"), ("[사양]", "title")]
+    if not spec:
+        return lines + [("  다음 정기 점검 뒤에 표시됩니다", "default")]
+    temps = detail.get("temps") or {}
+    margin = temps.get("warn_margin", 5)
+    vendor = VENDOR_SHORT.get(spec.get("board_vendor"), spec.get("board_vendor") or "")
+    lines.append((f"  보드  {vendor} {spec.get('board_name') or '?'}".rstrip(), "default"))
+    if spec.get("cpu"):
+        lines.append((f"  CPU   {_cpu_text(spec['cpu']):<56} {_limit_text(temps.get('cpu_max'), margin)}".rstrip(), "default"))
+    if spec.get("mem_total_kb"):
+        lines.append((f"  RAM   {spec['mem_total_kb'] / 1024 ** 2:.1f}GB (OS 기준)", "default"))
+    gpu_limit = _limit_text(temps.get("gpu_max"), margin) or "온도 감시 안 함"
+    for gpu in spec.get("gpus") or []:
+        lines.append((f"  GPU{gpu.get('index')}  {_gpu_text(gpu):<55} {gpu_limit}", "default"))
     return lines
 
 
@@ -180,6 +224,7 @@ def detail_lines(detail):
          f"   마지막 점검 {time_label(detail.get('last_check_at'), True)}   가동 {uptime_label(detail.get('uptime_seconds'))}"
          f"   Slurm {detail.get('slurm_state') or '-'}", status or "default"),
         (f"재부팅: {reboot_cell(detail)}" + (f" — {detail['reboot']['detail']}" if detail.get("reboot") else ""), "default"),
+        *spec_lines(detail),
         ("", "default"),
         ("[항목]", "title"),
     ]
