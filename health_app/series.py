@@ -1,4 +1,5 @@
 """그래프 데이터 손질 — node_manager 1분 지표(/hosts/{name}/metrics)를 그래프 6개의 선으로. 화면 코드 없는 순수 함수."""
+import colorsys
 import math
 
 from health_app.theme import GPU_COLORS, SINGLE_COLOR
@@ -7,6 +8,9 @@ GPU_TEMP_REFERENCE = 83   # NVIDIA 지포스 목표 온도. 넘으면 클럭을 
 RANGES = {"6시간": 6, "24시간": 24, "7일": 168}
 DEFAULT_RANGE = "24시간"
 GAP_FACTOR = 2.5          # 수집 간격의 이 배 넘게 비면 선을 끊는다(꺼진 동안을 이어 그리지 않게)
+CORE_PANEL = "cores"
+# 코어 색: 색상환을 코어 수만큼 고르게 나눈다(돌려 쓰지 않음). 어두운 바탕에서 보이게 밝고 조금 흐리게
+CORE_SATURATION, CORE_BRIGHTNESS = 0.55, 0.95
 
 # (제목, 데이터 위치, 키, 값 단위, 고정 범위)
 PANELS = (
@@ -14,7 +18,7 @@ PANELS = (
     ("GPU 사용률 (%)", "gpu", "util", "%", (0, 100)),
     ("GPU 메모리 (%)", "gpu", "mem_pct", "%", (0, 100)),
     ("CPU 온도 (°C)", "host", "cpu_temp", "°C", None),
-    ("CPU 부하 (코어당 %)", "host", "load_pct", "%", None),
+    ("CPU 사용률 (코어별 %)", CORE_PANEL, "pct", "%", (0, 100)),
     ("RAM 사용 (%)", "host", "mem_pct", "%", (0, 100)),
 )
 
@@ -39,9 +43,32 @@ def with_load_percent(host_rows):
             for row in host_rows]
 
 
+def core_color(position, count):
+    """코어 순서 position(0부터) → 색. 같은 노드에선 늘 같은 색이다."""
+    red, green, blue = colorsys.hsv_to_rgb(position / max(count, 1), CORE_SATURATION, CORE_BRIGHTNESS)
+    return f"#{round(red * 255):02x}{round(green * 255):02x}{round(blue * 255):02x}"
+
+
+def core_lines(cores):
+    """node_manager cores(구간 격자) → 코어마다 [(이름, 색, 시각, 값)]. 빈 구간은 NaN 이라 선이 끊긴다."""
+    bucket, start, ids = cores["bucket_seconds"], cores["start"], cores["cores"]
+    lines = []
+    for position, (core, row) in enumerate(zip(ids, cores["pct"])):
+        times = [float(start + column * bucket) for column in range(len(row))]
+        values = [math.nan if value is None else float(value) for value in row]
+        lines.append((f"코어 {core}", core_color(position, len(ids)), times, values))
+    return lines
+
+
 def panel_series(series, where, key):
-    """[(이름, 색, 시각, 값)]. GPU 는 번호 순(색 고정), 호스트 지표는 이름 없는 한 줄."""
+    """[(이름, 색, 시각, 값)]. GPU 는 번호 순(색 고정), 호스트 지표는 이름 없는 한 줄, 코어는 코어마다 한 줄.
+    코어별 값이 아직 없으면(배포 전 서버) 예전처럼 부하(load1/코어 수) 한 줄로 대신한다."""
     bucket = series.get("bucket_seconds", 60)
+    if where == CORE_PANEL:
+        cores = series.get("cores") or {}
+        if cores.get("cores"):
+            return core_lines(cores)
+        return [("평균 부하", SINGLE_COLOR, *line_points(with_load_percent(series.get("host", [])), "load_pct", bucket))]
     if where == "host":
         return [("", SINGLE_COLOR, *line_points(with_load_percent(series.get("host", [])), key, bucket))]
     return [(f"GPU{index}", GPU_COLORS[int(index) % len(GPU_COLORS)], *line_points(rows, key, bucket))
@@ -91,18 +118,6 @@ def cpu_list_text(cores):
     if run:
         parts.append(f"{run[0]}-{run[-1]}" if len(run) > 1 else str(run[0]))
     return ",".join(parts)
-
-
-def core_runs(job_cores, core_ids):
-    """job 코어를 히트맵 줄 위치의 연속 구간 [(첫 줄, 줄 수)]으로 — 떨어진 코어(0-1,8-9)는 상자를 따로 그린다."""
-    rows = sorted(core_ids.index(core) for core in job_cores if core in core_ids)
-    runs = []
-    for row in rows:
-        if runs and row == runs[-1][0] + runs[-1][1]:
-            runs[-1] = (runs[-1][0], runs[-1][1] + 1)
-        else:
-            runs.append((row, 1))
-    return runs
 
 
 def jobs_on_core(cores, core_id, moment):

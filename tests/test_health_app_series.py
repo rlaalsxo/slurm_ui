@@ -2,7 +2,7 @@
 import math
 
 from health_app.format import sort_key
-from health_app.series import (core_runs, cpu_list_text, finite_runs, jobs_on_core, line_points, nearest_index, panel_series,
+from health_app.series import (core_color, cpu_list_text, finite_runs, jobs_on_core, line_points, nearest_index, panel_series,
                                running_jobs, value_range, with_load_percent)
 from health_app.theme import GPU_COLORS
 
@@ -68,10 +68,22 @@ def test_core_lists_read_like_docker_cpuset():
     assert cpu_list_text([]) == ""
 
 
-def test_job_boxes_split_where_cores_are_not_adjacent_rows():
-    """코어 0·1·8·9 → 히트맵 줄 0·1 과 4·5 (줄은 있는 코어만 순서대로)."""
-    assert core_runs([0, 1, 8, 9], CORES["cores"]) == [(0, 2), (4, 2)]
-    assert core_runs([42], CORES["cores"]) == []
+def test_cpu_panel_draws_one_line_per_core_with_its_own_color():
+    series = {"bucket_seconds": 60, "host": [{"at": 0, "load1": 4, "cpus": 16}],
+              "cores": {**CORES, "pct": [[90, None, 80]] + [[1, 2, 3]] * 5}}
+    lines = panel_series(series, "cores", "pct")
+    assert [name for name, *_rest in lines] == ["코어 0", "코어 1", "코어 2", "코어 3", "코어 8", "코어 9"]
+    _name, _color, times, values = lines[0]
+    assert times == [0.0, 60.0, 120.0] and math.isnan(values[1])          # 빈 구간은 선을 끊는다
+    assert len({color for _name, color, *_rest in lines}) == 6            # 코어마다 다른 색
+    assert core_color(0, 16) == core_color(0, 16) != core_color(1, 16)
+
+
+def test_cpu_panel_falls_back_to_load_before_core_data_exists():
+    """배포 전 서버(코어별 값 없음)면 예전처럼 부하 한 줄."""
+    series = {"bucket_seconds": 60, "host": [{"at": 0, "load1": 4, "cpus": 16}], "cores": {"cores": [], "pct": [], "jobs": []}}
+    [(name, _color, _times, values)] = panel_series(series, "cores", "pct")
+    assert name == "평균 부하" and values == [25.0]
 
 
 def test_which_job_holds_a_core_now_and_at_a_moment():

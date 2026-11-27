@@ -1,33 +1,33 @@
-"""호스트 하나의 그래프 6개 + 코어별 CPU 히트맵(pyqtgraph). 한 그래프에 한 가지 수치만(축 하나), GPU 색은 번호마다 고정.
+"""호스트 하나의 그래프 6개(pyqtgraph). 한 그래프에 한 가지 수치만(축 하나), GPU 색은 번호마다 고정.
 
-- 마우스 휠: 시간축 확대·축소(모든 그래프가 같이 움직임). 기간 버튼을 다시 누르면 원래대로.
-- 마우스를 올리면 모든 그래프에 같은 시각 세로선 + 올린 그래프에 값 상자.
+- 마우스 휠: 시간축 확대·축소(6개가 같이 움직임). 기간 버튼을 다시 누르면 원래대로.
+- 마우스를 올리면 6개 모두에 같은 시각 세로선 + 올린 그래프에 값 상자.
 - 1분마다 새로 그려도 사용자가 확대해 둔 범위는 유지한다.
-- 히트맵: 줄 = 코어, 밝을수록 바쁨. 흰 테두리 상자 = 그 코어를 잡은 Slurm job(docker --cpuset-cpus 와 같은 코어).
+- CPU 그래프는 코어마다 색이 다른 선. 값 상자에 바쁜 코어 순으로 값과 그 코어를 잡은 Slurm job 이 나온다.
 """
 import datetime
 import math
 import time
 
-import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QColor, QFont
-from PySide6.QtWidgets import QButtonGroup, QGraphicsRectItem, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from health_app.series import (DEFAULT_RANGE, GPU_TEMP_REFERENCE, PANELS, RANGES, core_runs, finite_runs, jobs_on_core,
+from health_app.series import (CORE_PANEL, DEFAULT_RANGE, GPU_TEMP_REFERENCE, PANELS, RANGES, finite_runs, jobs_on_core,
                                nearest_index, panel_series, running_jobs, value_range)
-from health_app.theme import (BASELINE, CORE_RAMP, GPU_COLORS, GRID, INK_MUTED, INK_PRIMARY, INK_SECONDARY, SURFACE, TOOLTIP_BG,
-                              UI_FONT, WARNING)
+from health_app.theme import (BASELINE, GPU_COLORS, GRID, INK_MUTED, INK_PRIMARY, INK_SECONDARY, SURFACE, TOOLTIP_BG, UI_FONT,
+                              WARNING)
 
 pg.setConfigOptions(antialias=True, background=SURFACE, foreground=INK_MUTED)
 
 END_ROOM = 0.10          # 오른쪽 끝 값 글자 자리(x 범위 비율)
 FILL_ALPHA = 26          # 한 줄짜리 % 그래프의 은은한 면(10%)
 LABEL_GAP = 0.09         # 끝 값 글자 두 개가 겹치지 않게 벌리는 최소 간격(y 범위 비율)
-CORE_TITLE = "CPU 코어별 사용률 (%) — 밝을수록 바쁨, 테두리 = Slurm job"
-CORE_LUT = pg.ColorMap([0.0, 0.5, 1.0], list(CORE_RAMP)).getLookupTable(0.0, 1.0, 256)
-MAX_CORE_TICKS = 16      # 코어가 많으면(37번 72개) 줄 번호를 건너뛰어 적는다
+MAX_END_LABELS = 3       # 선이 많으면(코어별) 지금 값이 큰 몇 개만 끝에 적는다
+MAX_TOOLTIP_ROWS = 8     # 코어별 값 상자는 바쁜 순으로 이만큼, 나머지는 한 줄로 묶는다
+MANY_LINES_WIDTH = 1.2   # 코어별처럼 선이 많을 때 선 굵기
+CORE_PANEL_INDEX = next(index for index, panel in enumerate(PANELS) if panel[1] == CORE_PANEL)
 
 
 def _short_unit(unit):
@@ -74,7 +74,7 @@ class MetricsCharts(QWidget):
         self._lines = [[] for _ in PANELS]      # 그래프별 [(이름, 단위, 시각, 값)] — 값 상자용
         self._shown_key, self._default_x = None, None
         self._vlines, self._tips = [], []
-        self._cores = None                      # 히트맵 데이터(node_manager metrics 의 cores) — 값 상자용
+        self._cores = None                      # node_manager metrics 의 cores — 코어를 잡은 job 을 찾을 때
 
         header = QHBoxLayout()
         header.setContentsMargins(12, 10, 12, 0)
@@ -106,14 +106,6 @@ class MetricsCharts(QWidget):
             if self.plots:
                 plot.setXLink(self.plots[0])
             self.plots.append(plot)
-        self.core_plot = self.graphs.addPlot(row=2, col=0, colspan=3, axisItems={"bottom": _TimeAxis(orientation="bottom")})
-        self._style(self.core_plot, CORE_TITLE)
-        self.core_plot.showGrid(x=False, y=False)
-        self.core_plot.invertY(True)            # 코어 0 이 맨 위
-        # setXLink 는 화면 픽셀 기준으로 맞춰서, 폭이 3배인 히트맵이 3배 긴 시간을 보여 준다 — 범위를 직접 맞춘다
-        self._syncing_x = False
-        self.plots[0].sigXRangeChanged.connect(lambda _view, x_range: self._sync_x(self.core_plot, x_range))
-        self.core_plot.sigXRangeChanged.connect(lambda _view, x_range: self._sync_x(self.plots[0], x_range))
         self.graphs.scene().sigMouseMoved.connect(self._on_move)
         self.graphs.viewport().installEventFilter(self)
 
@@ -122,15 +114,6 @@ class MetricsCharts(QWidget):
         layout.addLayout(header)
         layout.addWidget(self.graphs, 1)
         self.show_message("")
-
-    def _sync_x(self, target, x_range):
-        if self._syncing_x:
-            return
-        self._syncing_x = True
-        try:
-            target.setXRange(*x_range, padding=0)
-        finally:
-            self._syncing_x = False
 
     @property
     def hours(self):
@@ -160,10 +143,10 @@ class MetricsCharts(QWidget):
 
     def _reset_plots(self):
         self._vlines, self._tips = [], []
-        for plot in self.plots + [self.core_plot]:   # 히트맵이 맨 끝 — 세로선·값 상자 목록도 같은 순서
+        for plot, (title, *_rest) in zip(self.plots, PANELS):
             plot.clear()
+            plot.setTitle(title, color=INK_SECONDARY, size="10pt", justify="left")
             vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen(INK_MUTED, width=1))
-            vline.setZValue(20)   # 히트맵 이미지 위에 보이게
             vline.hide()
             plot.addItem(vline, ignoreBounds=True)
             tip = pg.TextItem("", color=INK_PRIMARY, fill=pg.mkBrush(TOOLTIP_BG), border=pg.mkPen(BASELINE))
@@ -179,8 +162,7 @@ class MetricsCharts(QWidget):
         self._cores = None
         self._default_x = self._time_window()
         self.plots[0].setXRange(*self._default_x, padding=0)
-        self.core_plot.setTitle(CORE_TITLE, color=INK_SECONDARY, size="10pt", justify="left")
-        for plot in self.plots + [self.core_plot]:
+        for plot in self.plots:
             plot.setYRange(0, 100, padding=0)
             if message:
                 plot.addItem(self._centered_text(plot, message))
@@ -205,17 +187,26 @@ class MetricsCharts(QWidget):
         self._reset_plots()
         self.title_label.setText(f"{host_name} — 최근 {self._range_group.checkedButton().text()}")
         self.legend_label.setText(self._legend(len(series.get("gpus", {}))))
+        cores = series.get("cores")
+        self._cores = cores if cores and cores.get("cores") else None
 
         self._default_x = self._time_window()
-        for index, (plot, (_title, where, data_key, unit, fixed)) in enumerate(zip(self.plots, PANELS)):
+        for index, (plot, (title, where, data_key, unit, fixed)) in enumerate(zip(self.plots, PANELS)):
             lines = panel_series(series, where, data_key)
             reference = GPU_TEMP_REFERENCE if (where, data_key) == ("gpu", "temp") else None
             self._lines[index] = [(name, unit, times, values) for name, _color, times, values in lines]
             self._draw_panel(plot, lines, unit, value_range(lines, fixed, reference), reference)
-        self._draw_cores(series.get("cores"))
+        self._title_running_jobs()
         x0, x1 = kept_x or self._default_x
         self.plots[0].setXRange(x0, x1, padding=0)
         self._shown_key = key
+
+    def _title_running_jobs(self):
+        """CPU 그래프 제목 끝에 지금 도는 job 과 그 코어: '· job 44952 (0,2,4,6)'."""
+        running = running_jobs(self._cores, time.time()) if self._cores else []
+        if running:
+            title = PANELS[CORE_PANEL_INDEX][0] + "  · " + ", ".join(f"job {job} ({cores})" for job, cores in running)
+            self.plots[CORE_PANEL_INDEX].setTitle(title, color=INK_SECONDARY, size="10pt", justify="left")
 
     def _is_zoomed(self):
         if self._default_x is None:
@@ -246,8 +237,9 @@ class MetricsCharts(QWidget):
             fill.setAlpha(FILL_ALPHA)
             for run_times, run_values in finite_runs(times, values):
                 plot.plot(run_times, run_values, pen=None, fillLevel=low, brush=fill)
+        width = 2 if len(lines) <= len(GPU_COLORS) else MANY_LINES_WIDTH
         for _name, color, times, values in lines:
-            plot.plot(times, values, pen=pg.mkPen(color, width=2), connect="finite")
+            plot.plot(times, values, pen=pg.mkPen(color, width=width), connect="finite")
         if reference is not None:
             plot.addItem(pg.InfiniteLine(
                 pos=reference, angle=0, movable=False, pen=pg.mkPen(WARNING, width=1, style=Qt.PenStyle.DashLine),
@@ -255,60 +247,24 @@ class MetricsCharts(QWidget):
         plot.setYRange(low, high, padding=0)
         self._end_labels(plot, lines, unit, y_range)
 
-    def _draw_cores(self, cores):
-        """코어 × 시간 이미지 + job 테두리. 제목에 지금 도는 job 과 코어를 적는다."""
-        plot = self.core_plot
-        self._cores = cores if cores and cores.get("cores") else None
-        running = running_jobs(cores, time.time()) if self._cores else []
-        now_text = "   지금: " + ", ".join(f"job {job} (코어 {text})" for job, text in running) if running else ""
-        plot.setTitle(CORE_TITLE + now_text, color=INK_SECONDARY, size="10pt", justify="left")
-        if self._cores is None:
-            plot.getAxis("left").setTicks(None)
-            plot.setYRange(0, 1, padding=0)
-            plot.addItem(self._centered_text(plot, "데이터 없음"))
-            return
-        core_ids, bucket, start = cores["cores"], cores["bucket_seconds"], cores["start"]
-        matrix = np.array([[np.nan if value is None else value for value in row] for row in cores["pct"]], dtype=float)
-        image = pg.ImageItem(matrix, axisOrder="row-major", lut=CORE_LUT, levels=(0, 100))   # 빈 값(NaN)은 투명
-        image.setRect(QRectF(start, -0.5, matrix.shape[1] * bucket, len(core_ids)))
-        plot.addItem(image)
-        step = max(1, math.ceil(len(core_ids) / MAX_CORE_TICKS))
-        plot.getAxis("left").setTicks([[(row, str(core)) for row, core in enumerate(core_ids) if row % step == 0], []])
-        plot.setYRange(-0.5, len(core_ids) - 0.5, padding=0)
-        for job in cores.get("jobs", []):
-            self._draw_job(plot, job, core_ids, bucket)
-
-    @staticmethod
-    def _draw_job(plot, job, core_ids, bucket):
-        """job 이 잡은 코어 구간마다 흰 테두리, 첫 구간 오른쪽 바깥에 번호 글자(칸을 가리지 않게)."""
-        left, width = job["from"], max(job["to"] - job["from"], 0) + bucket
-        for index, (first_row, rows) in enumerate(core_runs(job["cores"], core_ids)):
-            box = QGraphicsRectItem(QRectF(left, first_row - 0.5, width, rows))
-            pen = pg.mkPen(INK_PRIMARY, width=1)
-            pen.setCosmetic(True)   # 확대해도 선 굵기 그대로
-            box.setPen(pen)
-            box.setZValue(10)
-            plot.addItem(box)
-            if index == 0:
-                label = pg.TextItem(f"job {job['job']}", color=INK_PRIMARY, fill=pg.mkBrush(TOOLTIP_BG), anchor=(0, 0))
-                label.setZValue(11)
-                label.setPos(left + width, first_row - 0.5)
-                plot.addItem(label)
-
     @staticmethod
     def _end_labels(plot, lines, unit, y_range):
-        """선 끝의 점 + 지금 값. 두 값이 가까우면 글자만 위아래로 벌린다."""
+        """선 끝의 점 + 지금 값. 두 값이 가까우면 글자만 위아래로 벌린다. 선이 많으면 지금 값이 큰 몇 개만."""
         ends = []
-        for _name, color, times, values in lines:
+        for name, color, times, values in lines:
             last = next((i for i in range(len(values) - 1, -1, -1) if not math.isnan(values[i])), None)
             if last is not None:
-                ends.append((values[last], times[last], color))
-        label_ys = spread_labels([value for value, _moment, _color in ends], *y_range,
+                ends.append((values[last], times[last], color, name))
+        many = len(lines) > len(GPU_COLORS)
+        if many:
+            ends = sorted(ends, key=lambda end: end[0], reverse=True)[:MAX_END_LABELS]
+        label_ys = spread_labels([value for value, *_rest in ends], *y_range,
                                  min_gap=(y_range[1] - y_range[0]) * LABEL_GAP)
-        for (value, moment, color), label_y in zip(ends, label_ys):
+        for (value, moment, color, name), label_y in zip(ends, label_ys):
             plot.addItem(pg.ScatterPlotItem([moment], [value], size=8, brush=pg.mkBrush(color),
                                             pen=pg.mkPen(SURFACE, width=2)))
-            text = pg.TextItem(f"{value:.0f}{_short_unit(unit)}", color=INK_SECONDARY, anchor=(-0.15, 0.5))
+            prefix = f"{name.replace('코어 ', '#')}: " if many else ""   # '#3: 98%' — 어느 코어인지
+            text = pg.TextItem(f"{prefix}{value:.0f}{_short_unit(unit)}", color=INK_SECONDARY, anchor=(-0.15, 0.5))
             text.setPos(moment, label_y)
             plot.addItem(text)
 
@@ -324,52 +280,51 @@ class MetricsCharts(QWidget):
             item.hide()
 
     def _on_move(self, scene_pos):
-        all_plots = self.plots + [self.core_plot]
-        hovered = next((i for i, plot in enumerate(all_plots) if plot.vb.sceneBoundingRect().contains(scene_pos)), None)
-        if hovered is None or not (any(self._lines) or self._cores):
+        hovered = next((i for i, plot in enumerate(self.plots) if plot.vb.sceneBoundingRect().contains(scene_pos)), None)
+        if hovered is None or not any(self._lines):
             self._hide_hover()
             return
-        point = all_plots[hovered].vb.mapSceneToView(scene_pos)
-        moment = point.x()
+        moment = self.plots[hovered].vb.mapSceneToView(scene_pos).x()
         for vline in self._vlines:
             vline.setPos(moment)
             vline.show()
         for tip in self._tips:
             tip.hide()
-        is_core = all_plots[hovered] is self.core_plot
-        text = self._core_tooltip_text(moment, point.y()) if is_core else self._tooltip_text(hovered, moment)
+        text = self._tooltip_text(hovered, moment)
         if not text:
             return
-        tip, plot = self._tips[hovered], all_plots[hovered]
+        tip, plot = self._tips[hovered], self.plots[hovered]
         (x0, x1), (_y0, y1) = plot.viewRange()
         tip.setText(text)   # 글자를 먼저 바꿔야 상자 크기가 새 글자에 맞는다
         tip.setAnchor((1.05, 0) if moment > x0 + (x1 - x0) * 0.6 else (-0.05, 0))  # 오른쪽 끝에선 왼쪽으로
-        tip.setPos(moment, plot.viewRange()[1][0] if is_core else y1)   # 히트맵은 y 가 뒤집혀 있어 위쪽이 작은 값
+        tip.setPos(moment, y1)
         tip.show()
 
-    def _core_tooltip_text(self, moment, row_position):
-        """'11-27 14:32 / 코어 5  98% / job 21895'."""
-        cores = self._cores
-        if not cores:
-            return ""
-        row, column = round(row_position), int((moment - cores["start"]) // cores["bucket_seconds"])
-        if not (0 <= row < len(cores["cores"]) and 0 <= column < len(cores["pct"][row])):
-            return ""
-        core, value = cores["cores"][row], cores["pct"][row][column]
-        stamp = datetime.datetime.fromtimestamp(cores["start"] + column * cores["bucket_seconds"]).strftime("%m-%d %H:%M")
-        rows = [stamp, f"코어 {core}  " + ("기록 없음" if value is None else f"{value:.0f}%")]
-        rows += [f"job {job}" for job in jobs_on_core(cores, core, moment)]
-        return "\n".join(rows)
-
     def _tooltip_text(self, panel_index, moment):
-        rows, stamp = [], None
+        values_at, stamp = [], None
         panel_name = PANELS[panel_index][0].split(" (")[0]
         for name, unit, times, values in self._lines[panel_index]:
             index = nearest_index(times, moment)
             if index is None or math.isnan(values[index]):
                 continue
             stamp = times[index]
-            rows.append(f"{name or panel_name}  {values[index]:.0f}{unit}")   # 한 줄짜리는 그래프 이름으로
-        if not rows:
+            values_at.append((name or panel_name, unit, values[index]))   # 한 줄짜리는 그래프 이름으로
+        if not values_at:
             return ""
+        if panel_index == CORE_PANEL_INDEX and len(values_at) > len(GPU_COLORS):
+            rows = self._core_rows(values_at, moment)
+        else:
+            rows = [f"{name}  {value:.0f}{unit}" for name, unit, value in values_at]
         return "\n".join([datetime.datetime.fromtimestamp(stamp).strftime("%m-%d %H:%M"), *rows])
+
+    def _core_rows(self, values_at, moment):
+        """바쁜 코어부터 '코어 3  98%  job 44952', 나머지는 '그 밖 12개 ≤ 5%'."""
+        ordered = sorted(values_at, key=lambda row: row[2], reverse=True)
+        rows = []
+        for name, unit, value in ordered[:MAX_TOOLTIP_ROWS]:
+            jobs = jobs_on_core(self._cores, int(name.split()[-1]), moment) if self._cores else []
+            rows.append(f"{name:<6} {value:>3.0f}{unit}" + (f"  job {', '.join(jobs)}" if jobs else ""))
+        rest = ordered[MAX_TOOLTIP_ROWS:]
+        if rest:
+            rows.append(f"그 밖 {len(rest)}개 ≤ {rest[0][2]:.0f}{rest[0][1]}")
+        return rows

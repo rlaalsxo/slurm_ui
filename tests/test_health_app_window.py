@@ -137,22 +137,21 @@ def test_hover_shows_values_of_the_hovered_graph(qapp, offline):
     charts.close()
 
 
-def test_core_heatmap_names_the_core_and_its_job(qapp):
-    from health_app.charts import MetricsCharts
+def test_cpu_graph_has_a_line_per_core_and_names_the_job_holding_it(qapp):
+    from health_app.charts import CORE_PANEL_INDEX, MetricsCharts
     charts = MetricsCharts()
-    charts.resize(1200, 800)
+    charts.resize(1200, 600)
     charts.show()
     charts.plot_series("connects-10", SERIES)
     QApplication.processEvents()
-    assert "지금: job 21895 (코어 0-3)" in charts.core_plot.titleLabel.text
-    plot = charts.core_plot
-    charts._on_move(plot.vb.mapViewToScene(QPointF(NOW - 300, 2)))
-    text = charts._tips[-1].textItem.toPlainText()
-    assert charts._tips[-1].isVisible() and "코어 2  97%" in text and "job 21895" in text
-    charts._on_move(plot.vb.mapViewToScene(QPointF(NOW - 300, 9)))
-    assert "코어 9  3%" in charts._tips[-1].textItem.toPlainText() and "job" not in charts._tips[-1].textItem.toPlainText()
+    plot = charts.plots[CORE_PANEL_INDEX]
+    assert len(charts._lines[CORE_PANEL_INDEX]) == 16 and "job 21895 (0-3)" in plot.titleLabel.text
+    charts._on_move(plot.vb.mapViewToScene(QPointF(NOW - 300, 50)))
+    rows = charts._tips[CORE_PANEL_INDEX].textItem.toPlainText().splitlines()
+    assert rows[1].startswith("코어 0") and "97%" in rows[1] and rows[1].endswith("job 21895")   # 바쁜 코어부터
+    assert rows[-1] == "그 밖 8개 ≤ 3%" and len(rows) == 1 + 8 + 1
     charts.plot_series("connects-10", {**SERIES, "cores": {"cores": [], "pct": [], "jobs": []}})   # 배포 전 서버
-    assert charts._cores is None
+    assert [name for name, *_rest in charts._lines[CORE_PANEL_INDEX]] == ["평균 부하"]
     charts.close()
 
 
