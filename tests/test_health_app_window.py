@@ -25,7 +25,11 @@ HOSTS = [
 SERIES = {"hours": 24, "bucket_seconds": 60,
           "gpus": {"0": [{"at": NOW - 600 + i * 60, "temp": 60 + i, "util": 50, "mem_pct": 30} for i in range(10)],
                    "1": [{"at": NOW - 600 + i * 60, "temp": 40, "util": 0, "mem_pct": 5} for i in range(10)]},
-          "host": [{"at": NOW - 600 + i * 60, "cpu_temp": 50 + i, "load1": 2, "cpus": 16, "mem_pct": 30} for i in range(10)]}
+          "host": [{"at": NOW - 600 + i * 60, "cpu_temp": 50 + i, "load1": 2, "cpus": 16, "mem_pct": 30} for i in range(10)],
+          # 코어 0~3 을 job 21895 가 꽉 쓰고 나머지는 거의 쉰다
+          "cores": {"start": NOW - 600, "bucket_seconds": 60, "cores": list(range(16)),
+                    "pct": [[97] * 10 if core < 4 else [3] * 10 for core in range(16)],
+                    "jobs": [{"job": "21895", "cores": [0, 1, 2, 3], "from": NOW - 540, "to": NOW - 60}]}}
 
 
 @pytest.fixture(scope="module")
@@ -130,6 +134,25 @@ def test_hover_shows_values_of_the_hovered_graph(qapp, offline):
     charts._on_move(plot.vb.mapViewToScene(QPointF(moment, y)))
     assert charts._tips[3].isVisible() and "CPU 온도  52°C" in charts._tips[3].textItem.toPlainText()
     assert all(vline.isVisible() for vline in charts._vlines)
+    charts.close()
+
+
+def test_core_heatmap_names_the_core_and_its_job(qapp):
+    from health_app.charts import MetricsCharts
+    charts = MetricsCharts()
+    charts.resize(1200, 800)
+    charts.show()
+    charts.plot_series("connects-10", SERIES)
+    QApplication.processEvents()
+    assert "지금: job 21895 (코어 0-3)" in charts.core_plot.titleLabel.text
+    plot = charts.core_plot
+    charts._on_move(plot.vb.mapViewToScene(QPointF(NOW - 300, 2)))
+    text = charts._tips[-1].textItem.toPlainText()
+    assert charts._tips[-1].isVisible() and "코어 2  97%" in text and "job 21895" in text
+    charts._on_move(plot.vb.mapViewToScene(QPointF(NOW - 300, 9)))
+    assert "코어 9  3%" in charts._tips[-1].textItem.toPlainText() and "job" not in charts._tips[-1].textItem.toPlainText()
+    charts.plot_series("connects-10", {**SERIES, "cores": {"cores": [], "pct": [], "jobs": []}})   # 배포 전 서버
+    assert charts._cores is None
     charts.close()
 
 

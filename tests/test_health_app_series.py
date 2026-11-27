@@ -2,7 +2,8 @@
 import math
 
 from health_app.format import sort_key
-from health_app.series import finite_runs, line_points, nearest_index, panel_series, value_range, with_load_percent
+from health_app.series import (core_runs, cpu_list_text, finite_runs, jobs_on_core, line_points, nearest_index, panel_series,
+                               running_jobs, value_range, with_load_percent)
 from health_app.theme import GPU_COLORS
 
 
@@ -55,3 +56,25 @@ def test_sort_keys_compare_numbers_not_text():
     assert sort_key("GPU 온도", {}, "48°/92°") == 92 and sort_key("RAM", {}, "-") == -1
     assert sort_key("이름", {}, "connects-2") < sort_key("이름", {}, "connects-10")
     assert sort_key("상태", {"status": "fail"}, "이상") < sort_key("상태", {"status": "ok"}, "정상")
+
+
+CORES = {"start": 0, "bucket_seconds": 60, "cores": [0, 1, 2, 3, 8, 9],
+         "jobs": [{"job": "21895", "cores": [0, 1, 8, 9], "from": 600.0, "to": 3000.0},
+                  {"job": "44304", "cores": [2], "from": 100.0, "to": 200.0}]}
+
+
+def test_core_lists_read_like_docker_cpuset():
+    assert cpu_list_text([11, 0, 1, 2, 3, 8, 10]) == "0-3,8,10-11"
+    assert cpu_list_text([]) == ""
+
+
+def test_job_boxes_split_where_cores_are_not_adjacent_rows():
+    """코어 0·1·8·9 → 히트맵 줄 0·1 과 4·5 (줄은 있는 코어만 순서대로)."""
+    assert core_runs([0, 1, 8, 9], CORES["cores"]) == [(0, 2), (4, 2)]
+    assert core_runs([42], CORES["cores"]) == []
+
+
+def test_which_job_holds_a_core_now_and_at_a_moment():
+    assert jobs_on_core(CORES, 8, 1000) == ["21895"] and jobs_on_core(CORES, 8, 100) == []
+    assert jobs_on_core(CORES, 2, 150) == ["44304"]
+    assert running_jobs(CORES, now=3100) == [("21895", "0-1,8-9")]        # 44304 는 끝났다

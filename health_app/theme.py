@@ -11,6 +11,7 @@ DANGER = "#7a3b3b"
 GPU_COLORS = ("#3987e5", "#d95926")   # 범주 1·2번 — GPU 번호마다 고정(정렬이 바뀌어도 색은 따라가지 않는다)
 SINGLE_COLOR = GPU_COLORS[0]
 WARNING = "#fab219"                    # 상태색(경고) — 기준선에만
+CORE_RAMP = ("#22324a", "#3987e5", "#d2e5fc")   # 코어 사용률 0→50→100%: 한 색(파랑) 진하기, 어두운 바탕이라 밝을수록 바쁨
 STATUS_COLORS = {"ok": "#00e060", "warn": "#ffcc00", "fail": "#ff5555", None: "#999999"}
 DETAIL_COLORS = {**{key: value for key, value in STATUS_COLORS.items() if key}, "title": "#66aaff", "default": "#cccccc"}
 

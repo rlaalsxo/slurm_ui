@@ -80,6 +80,45 @@ def finite_runs(times, values):
     return runs
 
 
+def cpu_list_text(cores):
+    """[0, 1, 2, 3, 8, 10, 11] → '0-3,8,10-11' (docker --cpuset-cpus 와 같은 꼴)."""
+    parts, run = [], []
+    for core in sorted(cores):
+        if run and core != run[-1] + 1:
+            parts.append(f"{run[0]}-{run[-1]}" if len(run) > 1 else str(run[0]))
+            run = []
+        run.append(core)
+    if run:
+        parts.append(f"{run[0]}-{run[-1]}" if len(run) > 1 else str(run[0]))
+    return ",".join(parts)
+
+
+def core_runs(job_cores, core_ids):
+    """job 코어를 히트맵 줄 위치의 연속 구간 [(첫 줄, 줄 수)]으로 — 떨어진 코어(0-1,8-9)는 상자를 따로 그린다."""
+    rows = sorted(core_ids.index(core) for core in job_cores if core in core_ids)
+    runs = []
+    for row in rows:
+        if runs and row == runs[-1][0] + runs[-1][1]:
+            runs[-1] = (runs[-1][0], runs[-1][1] + 1)
+        else:
+            runs.append((row, 1))
+    return runs
+
+
+def jobs_on_core(cores, core_id, moment):
+    """그 시각 그 코어를 잡고 있던 job 번호들."""
+    bucket = cores.get("bucket_seconds", 60)
+    return [job["job"] for job in cores.get("jobs", [])
+            if core_id in job["cores"] and job["from"] - bucket <= moment <= job["to"] + bucket]
+
+
+def running_jobs(cores, now, bucket_slack=3):
+    """지금(마지막 몇 구간 안에 보인) job → [(번호, 코어 글자)]."""
+    bucket = cores.get("bucket_seconds", 60)
+    return [(job["job"], cpu_list_text(job["cores"])) for job in cores.get("jobs", [])
+            if job["to"] >= now - bucket * bucket_slack]
+
+
 def nearest_index(times, moment):
     """moment 에 가장 가까운 점의 위치. 비어 있으면 None."""
     if not times:
